@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, HttpUrl
 
 ALLOWED_INTENTS = (
     "request",
@@ -62,6 +62,16 @@ class AgentMessage(BaseModel):
         return v
 
 
+class WebhookUpdate(BaseModel):
+    """Schema for updating a user's alert webhook."""
+    model_config = ConfigDict(extra="forbid")
+    
+    webhook_url: Optional[HttpUrl] = Field(
+        default=None, 
+        description="Slack or Discord webhook URL. Send null to remove."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Outgoing
 # ---------------------------------------------------------------------------
@@ -98,7 +108,6 @@ class UsageResponse(BaseModel):
         default=None,
         description="None when the tier is unlimited.",
     )
-    # --- Agent tracking ---
     agents_this_month: int = Field(default=0, ge=0)
     agent_limit: int = Field(default=5, ge=0, description="0 means unlimited.")
     reset_at: str = Field(..., min_length=1)

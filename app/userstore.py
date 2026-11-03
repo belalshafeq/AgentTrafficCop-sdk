@@ -12,7 +12,6 @@ from .db import get_db
 
 logger = logging.getLogger("agenttrafficcop.userstore")
 
-# Password hashing configuration
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -21,13 +20,13 @@ class User:
     id: int
     email: str
     password_hash: str
+    webhook_url: Optional[str] = None
 
 
 class UserStore:
     """Data access object for users."""
 
     def create_user(self, email: str, password: str) -> User:
-        """Create a new user. Raises ValueError if email exists."""
         email = email.lower().strip()
         password_hash = pwd_context.hash(password)
         
@@ -50,13 +49,12 @@ class UserStore:
             raise
 
     def get_user_by_email(self, email: str) -> Optional[User]:
-        """Fetch a user by email. Returns None if not found."""
         email = email.lower().strip()
         
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, email, password_hash FROM users WHERE email = ?",
+                "SELECT id, email, password_hash, webhook_url FROM users WHERE email = ?",
                 (email,)
             )
             row = cursor.fetchone()
@@ -67,11 +65,11 @@ class UserStore:
         return User(
             id=row["id"],
             email=row["email"],
-            password_hash=row["password_hash"]
+            password_hash=row["password_hash"],
+            webhook_url=row["webhook_url"]
         )
 
     def get_user_tier(self, user_id: int) -> str:
-        """Fetch the tier of a user's active key."""
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -82,7 +80,6 @@ class UserStore:
             return row["tier"] if row else "free"
 
     def create_api_key(self, user_id: int, tier: str = "free") -> str:
-        """Generate a new API key, save the hash to DB, return raw key exactly once."""
         import secrets
         import hashlib
         
@@ -105,16 +102,33 @@ class UserStore:
         return raw_key
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against a hash."""
-        # FIX: If `hashed_password` is malformed (someone inserted a bad row,
-        # DB migration glitch), passlib raises ValueError → 500 on login.
-        # A malformed user record should fail auth cleanly, not crash.
         try:
             return pwd_context.verify(plain_password, hashed_password)
         except (ValueError, TypeError):
             logger.warning("password_verify_bad_hash")
             return False
 
+    def update_webhook_url(self, user_id: int, url: Optional[str]) -> None:
+        """Save or clear the user's webhook URL."""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE users SET webhook_url = ? WHERE id = ?",
+                (url, user_id)
+            )
+            conn.commit()
+        logger.info("webhook_url_updated user_id=%s", user_id)
 
-# Singleton instance
+    def delete_user(self, user_id: int) -> None:
+        """Wipe the user and all their API keys from the database."""
+        with get_db() as conn:
+            cursor = conn.cursor()
+            # Delete API keys first (Foreign Key constraint)
+            cursor.execute("DELETE FROM api_keys WHERE user_id = ?", (user_id,))
+            # Delete the user
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+        logger.info("user_deleted user_id=%s", user_id)
+
+
 user_store = UserStore()

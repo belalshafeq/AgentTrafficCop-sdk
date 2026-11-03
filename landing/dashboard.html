@@ -78,6 +78,14 @@
     .copy-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: var(--accent); color: var(--bg); border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
     .copy-btn:hover { opacity: 0.8; }
 
+    .webhook-input { width: 100%; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); padding: 10px; border-radius: 6px; font-family: 'Geist Mono', monospace; font-size: 12px; outline: none; margin-top: 8px; }
+    .webhook-input:focus { border-color: var(--fg-1); }
+    
+    .danger-zone { border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05); border-radius: 8px; padding: 20px; margin-top: 40px; }
+    .danger-title { color: var(--error); font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .danger-btn { background: transparent; border: 1px solid var(--error); color: var(--error); padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
+    .danger-btn:hover { background: var(--error); color: var(--bg); }
+
     .page-footer { border-top: 1px solid var(--line); padding: 24px 32px; text-align: center; font-size: 12px; color: var(--fg-2); }
     .page-footer a { margin: 0 8px; transition: color 0.15s; }
     .page-footer a:hover { color: var(--fg); }
@@ -127,13 +135,20 @@
     </div>
 
     <!-- DASHBOARD SECTION -->
-    <div id="dashboard-section" class="card hidden">
+    <div id="dashboard-section" class="card hidden" style="max-width: 520px;">
       <div class="dashboard-header">
         <div>
           <div class="dashboard-title">Your Workspace</div>
           <div class="dashboard-email" id="user-email">...</div>
         </div>
         <button onclick="logout()" class="btn-secondary">Sign Out</button>
+      </div>
+
+      <!-- Money Saved Metric -->
+      <div class="tier-box" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
+        <div class="tier-label" style="color: var(--accent-2);">Estimated API Cost Avoided</div>
+        <div class="tier-value" id="money-saved" style="color: var(--accent-2); font-size: 32px;">$0.00</div>
+        <div style="font-size: 12px; color: var(--fg-2); margin-top: 4px;">Based on 7-day trip history * $0.004/msg</div>
       </div>
 
       <div class="tier-box">
@@ -174,6 +189,16 @@
         <canvas id="usageChart" style="max-height: 200px; margin-top: 16px;"></canvas>
       </div>
 
+      <!-- Webhook Alerts -->
+      <div class="key-box" style="margin-bottom: 24px;">
+        <div class="tier-label">Alert Webhook (Slack / Discord)</div>
+        <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 8px;">Get notified instantly when the circuit breaker halts a loop.</p>
+        <input type="url" id="webhook-url" class="webhook-input" placeholder="https://discord.com/api/webhooks/..." />
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+          <button id="save-webhook-btn" class="btn-secondary" onclick="saveWebhook()">Save Webhook</button>
+        </div>
+      </div>
+
       <div class="key-box">
         <div class="tier-label">Active API Key Fingerprint</div>
         <div class="fingerprint" id="api-fingerprint">...</div>
@@ -195,6 +220,14 @@
           <button class="copy-btn" onclick="copyKey()">COPY</button>
         </div>
       </div>
+
+      <!-- Danger Zone -->
+      <div class="danger-zone">
+        <div class="danger-title">Danger Zone</div>
+        <p style="font-size: 13px; color: var(--fg-1); margin-bottom: 16px;">Permanently delete your account and all associated API keys. This action cannot be undone.</p>
+        <button id="delete-account-btn" class="danger-btn" onclick="deleteAccount()">Delete Account</button>
+      </div>
+
     </div>
   </div>
 
@@ -355,6 +388,11 @@
         document.getElementById('user-tier').textContent = data.tier;
         document.getElementById('api-fingerprint').textContent = data.api_key_fingerprint;
         
+        // Populate webhook
+        if (data.webhook_url) {
+          document.getElementById('webhook-url').value = data.webhook_url;
+        }
+
         if (data.tier !== 'free') {
           document.getElementById('upgrade-btn').classList.add('hidden');
         }
@@ -394,6 +432,12 @@
         
         if (metricsRes.ok) {
           const metricsData = await metricsRes.json();
+          
+          // Feature 4: Calculate Money Saved
+          const totalRejected = metricsData.metrics.reduce((sum, m) => sum + m.rejected, 0);
+          const savedMoney = totalRejected * 0.004;
+          document.getElementById('money-saved').textContent = `$${savedMoney.toFixed(2)}`;
+
           const labels = metricsData.metrics.map(m => m.date);
           const approvedData = metricsData.metrics.map(m => m.approved);
           const rejectedData = metricsData.metrics.map(m => m.rejected);
@@ -492,6 +536,78 @@
         btn.textContent = "Network Error";
         setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
         return;
+      }
+    }
+
+    async function saveWebhook() {
+      const btn = document.getElementById('save-webhook-btn');
+      const input = document.getElementById('webhook-url');
+      const originalText = btn.textContent;
+      
+      btn.textContent = "Saving...";
+      btn.disabled = true;
+
+      const token = localStorage.getItem('atc_token');
+      try {
+        const res = await fetch(`${API_BASE}/v1/auth/webhook`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          },
+          body: JSON.stringify({ webhook_url: input.value || null })
+        });
+        
+        if (res.ok) {
+          btn.textContent = "Saved!";
+          btn.style.color = 'var(--accent)';
+          btn.style.borderColor = 'var(--accent)';
+          setTimeout(() => { 
+            btn.textContent = originalText; 
+            btn.style.color = '';
+            btn.style.borderColor = '';
+            btn.disabled = false; 
+          }, 2000);
+        } else {
+          btn.textContent = "Failed";
+          btn.style.color = 'var(--error)';
+          setTimeout(() => { 
+            btn.textContent = originalText; 
+            btn.style.color = '';
+            btn.disabled = false; 
+          }, 3000);
+        }
+      } catch (err) {
+        btn.textContent = "Network Error";
+        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+      }
+    }
+
+    async function deleteAccount() {
+      if (!confirm("Are you absolutely sure? This will permanently delete your account and all API keys. This cannot be undone.")) return;
+      
+      const btn = document.getElementById('delete-account-btn');
+      const originalText = btn.textContent;
+      btn.textContent = "Deleting...";
+      btn.disabled = true;
+
+      const token = localStorage.getItem('atc_token');
+      try {
+        const res = await fetch(`${API_BASE}/v1/auth/account`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          localStorage.removeItem('atc_token');
+          window.location.reload();
+        } else {
+          btn.textContent = "Failed to delete";
+          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+        }
+      } catch (err) {
+        btn.textContent = "Network Error";
+        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
       }
     }
 

@@ -1,9 +1,4 @@
-"""SQLite database layer for AgentTrafficCop.
-
-Handles user accounts and API keys. Uses SQLite for local development.
-When moving to production, swap the connection string to Postgres and
-change `sqlite3` to `psycopg` (or use SQLAlchemy).
-"""
+"""SQLite database layer for AgentTrafficCop."""
 
 from __future__ import annotations
 
@@ -16,19 +11,12 @@ from typing import Generator
 
 logger = logging.getLogger("agenttrafficcop.db")
 
-# Use ATC_DB_PATH from environment if available (for Render persistent disks),
-# otherwise default to the local repo root.
 _db_path_env = os.getenv("ATC_DB_PATH")
 if _db_path_env:
     DB_PATH = Path(_db_path_env)
 else:
     DB_PATH = Path(__file__).resolve().parent.parent / "agenttrafficcop.db"
 
-# FIX: the original did a bare `DB_PATH.parent.mkdir(...)` at import time.
-# If the parent dir isn't writable (Render disk not mounted, read-only FS,
-# permission error), the process died with a raw PermissionError and no
-# log line explaining why. Wrap it, emit a critical log with a hint, then
-# still raise — crashing is correct here, but now it's diagnosable.
 try:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 except OSError as e:
@@ -43,19 +31,30 @@ except OSError as e:
 
 
 def init_db() -> None:
-    """Create the tables if they don't exist."""
+    """Create the tables if they don't exist, and run safe migrations."""
     with get_db() as conn:
         cursor = conn.cursor()
 
+        # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
+                webhook_url TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
+        # FIX: Safe migration for existing DBs. If webhook_url doesn't exist,
+        # this adds it without dropping the table or losing data.
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN webhook_url TEXT;")
+            logger.info("db_migration_added_webhook_url")
+        except sqlite3.OperationalError:
+            pass # Column already exists
+
+        # API Keys table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,8 +68,19 @@ def init_db() -> None:
             )
         """)
 
-        # FIX: Add indexes for fast lookups. Without these, a 1M user database
-        # would do full table scans on every API request.
+        # Daily usage for the chart
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL,
+                date TEXT NOT NULL,
+                approved INTEGER DEFAULT 0,
+                rejected INTEGER DEFAULT 0,
+                UNIQUE(fingerprint, date)
+            )
+        """)
+
+        # Indexes for fast lookups
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id) WHERE revoked_at IS NULL")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_fingerprint ON api_keys(fingerprint) WHERE revoked_at IS NULL")
 
@@ -80,17 +90,8 @@ def init_db() -> None:
 
 @contextmanager
 def get_db() -> Generator[sqlite3.Connection, None, None]:
-    """Context manager for database connections.
-
-    Yields:
-        sqlite3.Connection: A connection with row_factory set to sqlite3.Row.
-    """
-    # timeout=10.0 prevents immediate crashes if the DB is temporarily locked
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.row_factory = sqlite3.Row  # Access columns by name
-
-    # FIX: WAL mode drastically improves concurrent read/write performance.
-    # It allows readers and writers to coexist without blocking each other.
+    conn.row_factory = sqlite3.Row
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
@@ -102,6 +103,4 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
     finally:
         conn.close()
 
-
-# Initialize the DB immediately on import
 init_db()

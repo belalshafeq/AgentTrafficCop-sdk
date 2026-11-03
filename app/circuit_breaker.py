@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import httpx
 from typing import Optional
 
 from . import metrics
 from .audit import audit
 from .config import settings
+from .db import get_db
 from .exceptions import (
     CyclicPayloadLoop,
     RepeatedPayloadLoop,
@@ -18,6 +21,57 @@ from .state_backends import SessionSnapshot
 
 logger = logging.getLogger("agenttrafficcop.breaker")
 
+
+# ---------------------------------------------------------------------------
+# Webhook Helpers (Feature 3)
+# ---------------------------------------------------------------------------
+
+def _get_webhook_url(fingerprint: str) -> Optional[str]:
+    """Find the webhook URL associated with the API key making the request."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT u.webhook_url FROM users u "
+                "JOIN api_keys k ON u.id = k.user_id "
+                "WHERE k.fingerprint = ? AND k.revoked_at IS NULL",
+                (fingerprint,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return row["webhook_url"]
+    except Exception as e:
+        logger.error("webhook_lookup_failed error=%s", e)
+    return None
+
+
+async def _send_webhook_async(url: str, message: str) -> None:
+    """Fire-and-forget HTTP POST to Slack or Discord."""
+    try:
+        # We send both 'text' (Slack) and 'content' (Discord) so it works for both.
+        payload = {"text": message, "content": message}
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload, timeout=5.0)
+        logger.info("webhook_fired url=%s", url[:30])
+    except Exception as e:
+        logger.warning("webhook_failed url=%s error=%s", url, e)
+
+
+def _fire_webhook(fingerprint: str, message: str) -> None:
+    """Helper to run the webhook asynchronously without blocking the API."""
+    url = _get_webhook_url(fingerprint)
+    if url:
+        try:
+            # FastAPI runs in an event loop. create_task makes it non-blocking.
+            asyncio.create_task(_send_webhook_async(url, message))
+        except RuntimeError:
+            # Fails gracefully if called outside an event loop (e.g., in tests)
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Core Logic
+# ---------------------------------------------------------------------------
 
 def evaluate(
     snapshot: SessionSnapshot,
@@ -56,6 +110,15 @@ def evaluate(
             )
         except Exception:
             pass
+            
+        if api_key_fingerprint:
+            msg = (
+                f"🛑 **AgentTrafficCop Alert**\n"
+                f"Your agent hit the **Step Limit** in session `{snapshot.session_id}` at step {snapshot.step}.\n"
+                f"This runaway session was halted to save your budget."
+            )
+            _fire_webhook(api_key_fingerprint, msg)
+
         raise StepLimitExceeded(
             message=(
                 f"Session '{snapshot.session_id}' exceeded the maximum of "
@@ -69,8 +132,6 @@ def evaluate(
             },
         )
 
-    # FIX (H4): Build a temporary snapshot to test loops BEFORE committing the step.
-    # This ensures a tripped loop doesn't eat up the user's step budget.
     new_hashes = snapshot.hashes + [payload_hash]
     temp_snapshot = SessionSnapshot(
         session_id=snapshot.session_id,
@@ -109,6 +170,15 @@ def evaluate(
             )
         except Exception:
             pass
+            
+        if api_key_fingerprint:
+            msg = (
+                f"🛑 **AgentTrafficCop Alert**\n"
+                f"Your agent hit a **Repeated Payload Loop** in session `{temp_snapshot.session_id}` at step {temp_snapshot.step}.\n"
+                f"This loop was halted to save your budget."
+            )
+            _fire_webhook(api_key_fingerprint, msg)
+
         raise RepeatedPayloadLoop(
             message=(
                 f"Session '{temp_snapshot.session_id}' produced identical "
@@ -154,6 +224,15 @@ def evaluate(
                 )
             except Exception:
                 pass
+                
+            if api_key_fingerprint:
+                msg = (
+                    f"🛑 **AgentTrafficCop Alert**\n"
+                    f"Your agent hit a **Cyclic Payload Loop** (length {cycle_len}) in session `{temp_snapshot.session_id}` at step {temp_snapshot.step}.\n"
+                    f"This loop was halted to save your budget."
+                )
+                _fire_webhook(api_key_fingerprint, msg)
+
             raise CyclicPayloadLoop(
                 message=(
                     f"Session '{temp_snapshot.session_id}' entered a "
@@ -169,6 +248,5 @@ def evaluate(
                 },
             )
 
-    # If all checks passed, we officially record the step.
     new_snapshot = session_store.record(snapshot.session_id, payload_hash)
     return new_snapshot
