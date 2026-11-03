@@ -22,6 +22,9 @@ from app.usage import (
 )
 from tests.conftest import SECOND_API_KEY, VALID_API_KEY
 
+# A dummy bucket for tests
+TEST_BUCKET = "2026-10"
+
 
 # ---------------------------------------------------------------------------
 # Setting override helper (frozen dataclass)
@@ -30,12 +33,6 @@ from tests.conftest import SECOND_API_KEY, VALID_API_KEY
 
 @pytest.fixture()
 def override_settings():
-    """Temporarily override frozen Settings fields.
-
-    Also clears the @lru_cache on get_tier_and_limit and _resolve_usage_key
-    so the new values take effect immediately. Without this, overrides
-    appear to have no effect because prior tests cached the values.
-    """
     original: dict = {}
 
     def _override(**kwargs):
@@ -94,22 +91,22 @@ class TestMonthBuckets:
 class TestInMemoryBackend:
     def test_starts_at_zero(self):
         b = InMemoryUsageBackend()
-        assert b.get("unknown") == 0
+        assert b.get("unknown", TEST_BUCKET) == 0
 
     def test_increment_returns_new_value(self):
         b = InMemoryUsageBackend()
-        assert b.increment("k1") == 1
-        assert b.increment("k1") == 2
-        assert b.increment("k1", amount=5) == 7
-        assert b.get("k1") == 7
+        assert b.increment("k1", TEST_BUCKET) == 1
+        assert b.increment("k1", TEST_BUCKET) == 2
+        assert b.increment("k1", TEST_BUCKET, amount=5) == 7
+        assert b.get("k1", TEST_BUCKET) == 7
 
     def test_fingerprints_are_independent(self):
         b = InMemoryUsageBackend()
-        b.increment("k1")
-        b.increment("k1")
-        b.increment("k2")
-        assert b.get("k1") == 2
-        assert b.get("k2") == 1
+        b.increment("k1", TEST_BUCKET)
+        b.increment("k1", TEST_BUCKET)
+        b.increment("k2", TEST_BUCKET)
+        assert b.get("k1", TEST_BUCKET) == 2
+        assert b.get("k2", TEST_BUCKET) == 1
 
     def test_thread_safe_increments(self):
         import threading
@@ -118,7 +115,7 @@ class TestInMemoryBackend:
 
         def worker():
             for _ in range(100):
-                b.increment("shared")
+                b.increment("shared", TEST_BUCKET)
 
         threads = [threading.Thread(target=worker) for _ in range(5)]
         for t in threads:
@@ -126,26 +123,26 @@ class TestInMemoryBackend:
         for t in threads:
             t.join()
 
-        assert b.get("shared") == 500
+        assert b.get("shared", TEST_BUCKET) == 500
 
     def test_add_agents_returns_new_count(self):
         b = InMemoryUsageBackend()
-        assert b.add_agents("k", {"a", "b"}) == 2
-        assert b.add_agents("k", {"b", "c"}) == 3
-        assert b.get_agents_set("k") == {"a", "b", "c"}
+        assert b.add_agents("k", TEST_BUCKET, {"a", "b"}) == 2
+        assert b.add_agents("k", TEST_BUCKET, {"b", "c"}) == 3
+        assert b.get_agents_set("k", TEST_BUCKET) == {"a", "b", "c"}
 
     def test_add_agents_is_idempotent(self):
         b = InMemoryUsageBackend()
-        b.add_agents("k", {"a", "b"})
-        b.add_agents("k", {"a", "b"})
-        assert b.add_agents("k", {"a", "b"}) == 2
+        b.add_agents("k", TEST_BUCKET, {"a", "b"})
+        b.add_agents("k", TEST_BUCKET, {"a", "b"})
+        assert b.add_agents("k", TEST_BUCKET, {"a", "b"}) == 2
 
     def test_agents_are_isolated_per_key(self):
         b = InMemoryUsageBackend()
-        b.add_agents("k1", {"a", "b"})
-        b.add_agents("k2", {"c"})
-        assert b.get_agents_set("k1") == {"a", "b"}
-        assert b.get_agents_set("k2") == {"c"}
+        b.add_agents("k1", TEST_BUCKET, {"a", "b"})
+        b.add_agents("k2", TEST_BUCKET, {"c"})
+        assert b.get_agents_set("k1", TEST_BUCKET) == {"a", "b"}
+        assert b.get_agents_set("k2", TEST_BUCKET) == {"c"}
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +169,6 @@ class TestModuleLevelAPI:
         assert d["reset_at"]
         assert isinstance(d["enforcement_enabled"], bool)
         assert d["remaining"] is None or isinstance(d["remaining"], int)
-        # --- New agent fields ---
         assert "agents_this_month" in d
         assert "agent_limit" in d
         assert isinstance(d["agents_this_month"], int)
@@ -325,7 +321,6 @@ class TestUsageEndpoint:
             "remaining",
             "reset_at",
             "enforcement_enabled",
-            # --- New agent fields ---
             "agents_this_month",
             "agent_limit",
         }
@@ -379,7 +374,6 @@ class TestUsageEndpoint:
     def test_agents_tracked_through_route(
         self, client, auth_headers, sample_message
     ):
-        """Send handoffs from 3 distinct agents and verify agents_this_month."""
         client.post("/v1/route", json=sample_message, headers=auth_headers)
 
         msg2 = dict(
@@ -392,7 +386,6 @@ class TestUsageEndpoint:
         client.post("/v1/route", json=msg2, headers=auth_headers)
 
         usage = client.get("/v1/usage", headers=auth_headers).json()
-        # coder, reviewer, planner → 3 unique agents
         assert usage["agents_this_month"] == 3
 
     def test_bad_auth_on_usage_endpoint(self, client):
