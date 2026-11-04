@@ -18,10 +18,8 @@ try:
 except ImportError:  # pragma: no cover
     pass
 
-# FIX: Fail closed. Any env not in this list is treated as production.
 _DEV_ENVS = frozenset({"development", "dev", "test", "testing", "local"})
 
-# FIX: Wide list of known-bad JWT secrets to prevent shipping insecure configs.
 _INSECURE_JWT_SECRETS = frozenset({
     "",
     "super-secret-change-me-in-prod",
@@ -83,163 +81,66 @@ def _env_key_list(name: str) -> Tuple[str, ...]:
 
 @dataclass(frozen=True)
 class Settings:
-    """Immutable runtime settings for AgentTrafficCop."""
-
-    # --- Server ---
     host: str = field(default_factory=lambda: _env_str("ATC_HOST", "0.0.0.0"))
     port: int = field(default_factory=lambda: _env_int("ATC_PORT", 8000, minimum=1))
-    environment: str = field(
-        default_factory=lambda: _env_str("ATC_ENV", "development")
-    )
-    log_level: str = field(
-        default_factory=lambda: _env_str("ATC_LOG_LEVEL", "INFO").upper()
-    )
+    environment: str = field(default_factory=lambda: _env_str("ATC_ENV", "development"))
+    log_level: str = field(default_factory=lambda: _env_str("ATC_LOG_LEVEL", "INFO").upper())
 
-    # --- Security ---
     api_keys: Tuple[str, ...] = field(default_factory=_env_api_keys)
-    cors_origins: Optional[str] = field(
-        default_factory=lambda: _env_optional_str("ATC_CORS_ORIGINS")
-    )
-    trust_proxy: bool = field(
-        default_factory=lambda: _env_bool("ATC_TRUST_PROXY", False)
-    )
-    admin_api_keys: Tuple[str, ...] = field(
-        default_factory=lambda: _env_key_list("ATC_ADMIN_API_KEYS")
-    )
+    cors_origins: Optional[str] = field(default_factory=lambda: _env_optional_str("ATC_CORS_ORIGINS"))
+    trust_proxy: bool = field(default_factory=lambda: _env_bool("ATC_TRUST_PROXY", False))
+    admin_api_keys: Tuple[str, ...] = field(default_factory=lambda: _env_key_list("ATC_ADMIN_API_KEYS"))
 
-    # --- Auth / JWT ---
-    jwt_secret_key: str = field(
-        default_factory=lambda: _env_str(
-            "ATC_JWT_SECRET", "super-secret-change-me-in-prod"
-        )
-    )
+    jwt_secret_key: str = field(default_factory=lambda: _env_str("ATC_JWT_SECRET", "super-secret-change-me-in-prod"))
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7
 
-    # --- Lemon Squeezy Billing ---
-    lemonsqueezy_checkout_url: Optional[str] = field(
-        default_factory=lambda: _env_optional_str("LEMONSQUEEZY_CHECKOUT_URL")
-    )
-    lemonsqueezy_webhook_secret: Optional[str] = field(
-        default_factory=lambda: _env_optional_str("LEMONSQUEEZY_WEBHOOK_SECRET")
-    )
+    lemonsqueezy_checkout_url: Optional[str] = field(default_factory=lambda: _env_optional_str("LEMONSQUEEZY_CHECKOUT_URL"))
+    lemonsqueezy_webhook_secret: Optional[str] = field(default_factory=lambda: _env_optional_str("LEMONSQUEEZY_WEBHOOK_SECRET"))
+    
+    # --- Email (Resend) ---
+    resend_api_key: Optional[str] = field(default_factory=lambda: _env_optional_str("RESEND_API_KEY"))
+    sentry_dsn: Optional[str] = field(default_factory=lambda: _env_optional_str("SENTRY_DSN"))
 
-    # --- Error Tracking ---
-    sentry_dsn: Optional[str] = field(
-        default_factory=lambda: _env_optional_str("SENTRY_DSN")
-    )
+    free_api_keys: Tuple[str, ...] = field(default_factory=lambda: _env_key_list("ATC_FREE_API_KEYS"))
+    pro_api_keys: Tuple[str, ...] = field(default_factory=lambda: _env_key_list("ATC_PRO_API_KEYS"))
+    team_api_keys: Tuple[str, ...] = field(default_factory=lambda: _env_key_list("ATC_TEAM_API_KEYS"))
 
-    # --- Tier assignments ---
-    free_api_keys: Tuple[str, ...] = field(
-        default_factory=lambda: _env_key_list("ATC_FREE_API_KEYS")
-    )
-    pro_api_keys: Tuple[str, ...] = field(
-        default_factory=lambda: _env_key_list("ATC_PRO_API_KEYS")
-    )
-    team_api_keys: Tuple[str, ...] = field(
-        default_factory=lambda: _env_key_list("ATC_TEAM_API_KEYS")
-    )
+    tier_free_limit: int = field(default_factory=lambda: _env_int("ATC_TIER_FREE_LIMIT", 10_000, minimum=0))
+    tier_pro_limit: int = field(default_factory=lambda: _env_int("ATC_TIER_PRO_LIMIT", 250_000, minimum=0))
+    tier_team_limit: int = field(default_factory=lambda: _env_int("ATC_TIER_TEAM_LIMIT", 2_000_000, minimum=0))
 
-    # --- Tier message limits (per calendar month; 0 = unlimited) ---
-    tier_free_limit: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_FREE_LIMIT", 10_000, minimum=0)
-    )
-    tier_pro_limit: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_PRO_LIMIT", 250_000, minimum=0)
-    )
-    tier_team_limit: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_TEAM_LIMIT", 2_000_000, minimum=0)
-    )
+    tier_free_agents: int = field(default_factory=lambda: _env_int("ATC_TIER_FREE_AGENTS", 5, minimum=0))
+    tier_pro_agents: int = field(default_factory=lambda: _env_int("ATC_TIER_PRO_AGENTS", 25, minimum=0))
+    tier_team_agents: int = field(default_factory=lambda: _env_int("ATC_TIER_TEAM_AGENTS", 100, minimum=0))
 
-    # --- Tier agent limits ---
-    tier_free_agents: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_FREE_AGENTS", 5, minimum=0)
-    )
-    tier_pro_agents: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_PRO_AGENTS", 25, minimum=0)
-    )
-    tier_team_agents: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_TEAM_AGENTS", 100, minimum=0)
-    )
+    tier_free_rate_limit: int = field(default_factory=lambda: _env_int("ATC_TIER_FREE_RATE_LIMIT", 60, minimum=1))
+    tier_pro_rate_limit: int = field(default_factory=lambda: _env_int("ATC_TIER_PRO_RATE_LIMIT", 120, minimum=1))
+    tier_team_rate_limit: int = field(default_factory=lambda: _env_int("ATC_TIER_TEAM_RATE_LIMIT", 300, minimum=1))
 
-    # --- Tier rate limits (requests/minute) ---
-    tier_free_rate_limit: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_FREE_RATE_LIMIT", 60, minimum=1)
-    )
-    tier_pro_rate_limit: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_PRO_RATE_LIMIT", 120, minimum=1)
-    )
-    tier_team_rate_limit: int = field(
-        default_factory=lambda: _env_int("ATC_TIER_TEAM_RATE_LIMIT", 300, minimum=1)
-    )
+    usage_enforcement_enabled: bool = field(default_factory=lambda: _env_bool("ATC_USAGE_ENFORCEMENT_ENABLED", True))
+    usage_key_prefix: str = field(default_factory=lambda: _env_str("ATC_USAGE_KEY_PREFIX", "atc:usage:"))
 
-    # --- Usage metering ---
-    usage_enforcement_enabled: bool = field(
-        default_factory=lambda: _env_bool("ATC_USAGE_ENFORCEMENT_ENABLED", True)
-    )
-    usage_key_prefix: str = field(
-        default_factory=lambda: _env_str("ATC_USAGE_KEY_PREFIX", "atc:usage:")
-    )
+    max_body_bytes: int = field(default_factory=lambda: _env_int("ATC_MAX_BODY_BYTES", 1_048_576, minimum=1))
+    rate_limit_per_minute: int = field(default_factory=lambda: _env_int("ATC_RATE_LIMIT_PER_MINUTE", 120, minimum=1))
 
-    # --- Request limits ---
-    max_body_bytes: int = field(
-        default_factory=lambda: _env_int("ATC_MAX_BODY_BYTES", 1_048_576, minimum=1)
-    )
-    rate_limit_per_minute: int = field(
-        default_factory=lambda: _env_int("ATC_RATE_LIMIT_PER_MINUTE", 120, minimum=1)
-    )
+    metrics_enabled: bool = field(default_factory=lambda: _env_bool("ATC_METRICS_ENABLED", True))
+    metrics_path: str = field(default_factory=lambda: _env_str("ATC_METRICS_PATH", "/metrics"))
 
-    # --- Observability ---
-    metrics_enabled: bool = field(
-        default_factory=lambda: _env_bool("ATC_METRICS_ENABLED", True)
-    )
-    metrics_path: str = field(
-        default_factory=lambda: _env_str("ATC_METRICS_PATH", "/metrics")
-    )
+    audit_log_enabled: bool = field(default_factory=lambda: _env_bool("ATC_AUDIT_LOG_ENABLED", False))
+    audit_log_path: Optional[str] = field(default_factory=lambda: _env_optional_str("ATC_AUDIT_LOG_PATH"))
 
-    # --- Audit log ---
-    audit_log_enabled: bool = field(
-        default_factory=lambda: _env_bool("ATC_AUDIT_LOG_ENABLED", False)
-    )
-    audit_log_path: Optional[str] = field(
-        default_factory=lambda: _env_optional_str("ATC_AUDIT_LOG_PATH")
-    )
+    redis_url: Optional[str] = field(default_factory=lambda: _env_optional_str("ATC_REDIS_URL"))
+    redis_ttl_seconds: int = field(default_factory=lambda: _env_int("ATC_REDIS_TTL_SECONDS", 86_400, minimum=1))
+    redis_key_prefix: str = field(default_factory=lambda: _env_str("ATC_REDIS_KEY_PREFIX", "atc:"))
+    session_ttl_seconds: int = field(default_factory=lambda: _env_int("ATC_SESSION_TTL_SECONDS", 0, minimum=0))
 
-    # --- Storage backend ---
-    redis_url: Optional[str] = field(
-        default_factory=lambda: _env_optional_str("ATC_REDIS_URL")
-    )
-    redis_ttl_seconds: int = field(
-        default_factory=lambda: _env_int("ATC_REDIS_TTL_SECONDS", 86_400, minimum=1)
-    )
-    redis_key_prefix: str = field(
-        default_factory=lambda: _env_str("ATC_REDIS_KEY_PREFIX", "atc:")
-    )
-    session_ttl_seconds: int = field(
-        default_factory=lambda: _env_int("ATC_SESSION_TTL_SECONDS", 0, minimum=0)
-    )
-
-    # --- Governance thresholds ---
-    max_steps: int = field(
-        default_factory=lambda: _env_int("ATC_MAX_STEPS", 25, minimum=1)
-    )
-    max_repeated_hashes: int = field(
-        default_factory=lambda: _env_int("ATC_MAX_REPEATED_HASHES", 3, minimum=1)
-    )
-    max_cycle_length: int = field(
-        default_factory=lambda: _env_int("ATC_MAX_CYCLE_LENGTH", 2, minimum=1)
-    )
-    max_cycle_repeats: int = field(
-        default_factory=lambda: _env_int("ATC_MAX_CYCLE_REPEATS", 3, minimum=1)
-    )
-    history_window: int = field(
-        default_factory=lambda: _env_int("ATC_HISTORY_WINDOW", 16, minimum=1)
-    )
-    max_sessions: int = field(
-        default_factory=lambda: _env_int("ATC_MAX_SESSIONS", 10_000, minimum=1)
-    )
-
-    # --- Derived ---
+    max_steps: int = field(default_factory=lambda: _env_int("ATC_MAX_STEPS", 25, minimum=1))
+    max_repeated_hashes: int = field(default_factory=lambda: _env_int("ATC_MAX_REPEATED_HASHES", 3, minimum=1))
+    max_cycle_length: int = field(default_factory=lambda: _env_int("ATC_MAX_CYCLE_LENGTH", 2, minimum=1))
+    max_cycle_repeats: int = field(default_factory=lambda: _env_int("ATC_MAX_CYCLE_REPEATS", 3, minimum=1))
+    history_window: int = field(default_factory=lambda: _env_int("ATC_HISTORY_WINDOW", 16, minimum=1))
+    max_sessions: int = field(default_factory=lambda: _env_int("ATC_MAX_SESSIONS", 10_000, minimum=1))
 
     @property
     def is_production(self) -> bool:
@@ -262,11 +163,7 @@ class Settings:
         return self.session_ttl_seconds > 0
 
     def _all_tier_keys(self) -> Tuple[str, ...]:
-        return (
-            self.free_api_keys
-            + self.pro_api_keys
-            + self.team_api_keys
-        )
+        return self.free_api_keys + self.pro_api_keys + self.team_api_keys
 
     def tier_for_key(self, key: str) -> str:
         if key in self.team_api_keys or key in self.api_keys:
@@ -278,48 +175,22 @@ class Settings:
         return "free"
 
     def limit_for_tier(self, tier: str) -> int:
-        return {
-            "free": self.tier_free_limit,
-            "pro": self.tier_pro_limit,
-            "team": self.tier_team_limit,
-        }.get(tier, self.tier_free_limit)
+        return {"free": self.tier_free_limit, "pro": self.tier_pro_limit, "team": self.tier_team_limit}.get(tier, self.tier_free_limit)
 
     def agent_limit_for_tier(self, tier: str) -> int:
-        return {
-            "free": self.tier_free_agents,
-            "pro": self.tier_pro_agents,
-            "team": self.tier_team_agents,
-        }.get(tier, self.tier_free_agents)
+        return {"free": self.tier_free_agents, "pro": self.tier_pro_agents, "team": self.tier_team_agents}.get(tier, self.tier_free_agents)
 
     def rate_limit_for_tier(self, tier: str) -> int:
-        return {
-            "free": self.tier_free_rate_limit,
-            "pro": self.tier_pro_rate_limit,
-            "team": self.tier_team_rate_limit,
-        }.get(tier, self.rate_limit_per_minute)
+        return {"free": self.tier_free_rate_limit, "pro": self.tier_pro_rate_limit, "team": self.tier_team_rate_limit}.get(tier, self.rate_limit_per_minute)
 
 
 settings = Settings()
 
-# --- Production safety checks ---
 if settings.is_production:
     if settings.jwt_secret_key in _INSECURE_JWT_SECRETS:
-        raise RuntimeError(
-            "FATAL: ATC_ENV indicates production "
-            f"(ATC_ENV={settings.environment!r}) but ATC_JWT_SECRET is "
-            "a known placeholder. Generate a real secret and set it:\n"
-            "    python -c \"import secrets; print(secrets.token_urlsafe(32))\"\n"
-            "Then set ATC_JWT_SECRET to the output and restart."
-        )
+        raise RuntimeError("FATAL: ATC_ENV indicates production but ATC_JWT_SECRET is a known placeholder.")
 elif settings.jwt_secret_key in _INSECURE_JWT_SECRETS:
-    logger.warning(
-        "insecure_jwt_secret env=%s — set ATC_JWT_SECRET before "
-        "deploying to production",
-        settings.environment,
-    )
+    logger.warning("insecure_jwt_secret env=%s — set ATC_JWT_SECRET before deploying to production", settings.environment)
 
 if not settings.admin_api_keys and settings.auth_enabled:
-    logger.warning(
-        "admin_api_keys_not_configured — admin endpoints will accept any "
-        "team-tier key. Set ATC_ADMIN_API_KEYS to lock them down."
-    )
+    logger.warning("admin_api_keys_not_configured — admin endpoints will accept any team-tier key.")

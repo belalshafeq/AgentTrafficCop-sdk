@@ -130,5 +130,17 @@ class UserStore:
             conn.commit()
         logger.info("user_deleted user_id=%s", user_id)
 
+    def update_password(self, user_id: int, new_password: str) -> None:
+        """Hash and save the new password."""
+        new_hash = pwd_context.hash(new_password)
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (new_hash, user_id)
+            )
+            conn.commit()
+        logger.info("password_updated user_id=%s", user_id)
+
 
 user_store = UserStore()
