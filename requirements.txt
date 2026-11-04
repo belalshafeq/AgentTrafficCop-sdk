@@ -9,6 +9,7 @@ uvicorn[standard]==0.30.6
 # --- Data validation ---
 pydantic>=2.13.0,<3.0.0
 email-validator>=2.0.0
+resend>=2.0.0
 
 # --- Environment variable loading ---
 python-dotenv==1.0.1

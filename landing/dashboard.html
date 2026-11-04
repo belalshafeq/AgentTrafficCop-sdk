@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard | AgentTrafficCop</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23000'/%3E%3Cpath d='M30 55L45 70L70 30' stroke='white' stroke-width='10' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -116,13 +117,20 @@
           <label>Email</label>
           <input type="email" id="email" required placeholder="you@company.com" autocomplete="email" />
         </div>
-        <div class="form-group">
+        
+        <div class="form-group" id="password-group">
           <label>Password</label>
           <div class="input-wrapper">
             <input type="password" id="password" required minlength="8" maxlength="72" placeholder="••••••••" autocomplete="current-password" />
             <span class="toggle-password" onclick="togglePassword('password', this)">SHOW</span>
           </div>
         </div>
+        
+        <!-- FIX: Forgot Password Link -->
+        <div id="forgot-password-wrapper" style="text-align: right; margin-top: -8px; margin-bottom: 16px;">
+          <a href="#" id="forgot-link" onclick="switchAuthMode('forgot')" style="font-size: 12px; color: var(--fg-2); text-decoration: none;">Forgot password?</a>
+        </div>
+
         <div class="form-group hidden" id="confirm-password-group">
           <label>Confirm Password</label>
           <div class="input-wrapper">
@@ -265,15 +273,30 @@
       document.querySelectorAll('.toggle-password').forEach(el => el.textContent = 'SHOW');
       document.getElementById('auth-error').textContent = '';
       document.getElementById('email').classList.remove('invalid');
-      document.getElementById('tab-login').classList.toggle('active', mode === 'login');
+      
+      const isForgot = mode === 'forgot';
+      const isLogin = mode === 'login';
+
+      document.getElementById('tab-login').classList.toggle('active', isLogin);
       document.getElementById('tab-register').classList.toggle('active', mode === 'register');
       
-      document.getElementById('auth-title').textContent = mode === 'login' ? 'Welcome back' : 'Claim your free API key';
-      document.getElementById('auth-subtitle').textContent = mode === 'login' ? 'Sign in to manage your keys.' : '5 agents free. No credit card required.';
-      document.getElementById('submit-btn').textContent = mode === 'login' ? 'Sign In' : 'Generate API Key';
+      document.getElementById('auth-title').textContent = isForgot ? 'Reset Password' : (isLogin ? 'Welcome back' : 'Claim your free API key');
+      document.getElementById('auth-subtitle').textContent = isForgot ? 'Enter your email to receive a reset link.' : (isLogin ? 'Sign in to manage your keys.' : '5 agents free. No credit card required.');
+      document.getElementById('submit-btn').textContent = isForgot ? 'Send Reset Link' : (isLogin ? 'Sign In' : 'Generate API Key');
       
-      document.getElementById('confirm-password-group').classList.toggle('hidden', mode === 'login');
-      document.getElementById('confirm-password').required = mode === 'register';
+      // Hide/show elements based on mode
+      document.getElementById('password-group').classList.toggle('hidden', isForgot);
+      document.getElementById('confirm-password-group').classList.toggle('hidden', !isForgot && !isLogin ? false : true);
+      document.getElementById('confirm-password').required = (!isLogin && !isForgot);
+      document.getElementById('forgot-password-wrapper').classList.toggle('hidden', !isLogin);
+      
+      // Hide the tabs if we are in Forgot mode
+      document.querySelector('.auth-tabs').style.display = isForgot ? 'none' : 'flex';
+      
+      // Update the back to login link
+      const link = document.getElementById('forgot-link');
+      link.textContent = isForgot ? '← Back to login' : 'Forgot password?';
+      link.setAttribute('onclick', isForgot ? "switchAuthMode('login')" : "switchAuthMode('forgot')");
     }
 
     document.getElementById('email').addEventListener('input', () => {
@@ -309,12 +332,33 @@
       btn.textContent = "Loading...";
       btn.disabled = true;
       errorEl.textContent = '';
+      errorEl.style.color = 'var(--error)'; // Reset color
 
       const slowTimer = setTimeout(() => {
         btn.textContent = "Waking up server... (~30s)";
       }, 3000);
 
       try {
+        // FIX: Handle Forgot Password Flow
+        if (currentMode === 'forgot') {
+          const res = await fetch(`${API_BASE}/v1/auth/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          
+          if (!res.ok) throw new Error(data.detail || "Failed to send reset link.");
+          
+          clearTimeout(slowTimer);
+          errorEl.style.color = 'var(--accent)';
+          errorEl.textContent = data.message;
+          btn.textContent = "Link Sent!";
+          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+          return; // Stop execution here
+        }
+
+        // Handle Login / Register Flow
         let res;
         if (currentMode === 'login') {
           const formData = new URLSearchParams();
@@ -361,8 +405,10 @@
         }
       } finally {
         clearTimeout(slowTimer);
-        btn.textContent = originalText;
-        btn.disabled = false;
+        if (currentMode !== 'forgot') {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
       }
     });
 
@@ -388,7 +434,6 @@
         document.getElementById('user-tier').textContent = data.tier;
         document.getElementById('api-fingerprint').textContent = data.api_key_fingerprint;
         
-        // Populate webhook
         if (data.webhook_url) {
           document.getElementById('webhook-url').value = data.webhook_url;
         }
@@ -433,7 +478,6 @@
         if (metricsRes.ok) {
           const metricsData = await metricsRes.json();
           
-          // Feature 4: Calculate Money Saved
           const totalRejected = metricsData.metrics.reduce((sum, m) => sum + m.rejected, 0);
           const savedMoney = totalRejected * 0.004;
           document.getElementById('money-saved').textContent = `$${savedMoney.toFixed(2)}`;
