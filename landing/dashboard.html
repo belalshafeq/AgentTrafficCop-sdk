@@ -9,7 +9,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
   
-  <!-- Syntax Highlighting -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -30,11 +29,16 @@
     
     .main-container { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; }
     
-    /* Auth Card (Centered) */
+    /* Auth Card */
     .auth-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); margin: 0 auto; }
     
     /* Dashboard Container */
     .dashboard-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 900px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    
+    /* Hero Onboarding (Shows if 0 keys) */
+    .hero-onboarding { text-align: center; padding: 40px 20px; border: 1px dashed var(--line-2); border-radius: 12px; margin-bottom: 32px; background: rgba(255,255,255,0.01); }
+    .hero-onboarding h2 { font-size: 24px; margin-bottom: 12px; color: var(--fg); }
+    .hero-onboarding p { color: var(--fg-1); font-size: 14px; margin-bottom: 24px; max-width: 400px; margin-inline: auto; }
     
     /* Main Grid */
     .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; margin-bottom: 24px; }
@@ -45,7 +49,7 @@
       .dashboard-card { padding: 20px; }
     }
 
-    /* Auth Styles */
+    /* Form Elements */
     .auth-tabs { display: flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 4px; margin-bottom: 24px; }
     .auth-tab { flex: 1; text-align: center; padding: 8px; font-size: 13px; font-weight: 500; color: var(--fg-1); border-radius: 6px; cursor: pointer; transition: all 0.2s; border: none; background: transparent; }
     .auth-tab:hover { color: var(--fg); }
@@ -66,7 +70,7 @@
     .hidden { display: none !important; }
     .error-msg { color: var(--error); font-size: 13px; margin-top: 12px; text-align: center; min-height: 20px; }
 
-    /* Dashboard Styles */
+    /* Dashboard Boxes */
     .dashboard-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
     .dashboard-title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
     .dashboard-email { color: var(--fg-1); font-size: 13px; margin-top: 4px; }
@@ -100,7 +104,7 @@
     .page-footer a { margin: 0 8px; transition: color 0.15s; }
     .page-footer a:hover { color: var(--fg); }
 
-    /* Custom Modal */
+    /* Modal */
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
     .modal-content { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 12px; padding: 32px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
     .modal-content h3 { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
@@ -117,22 +121,15 @@
     .copy-code-snippet-btn { position: absolute; top: 8px; right: 8px; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--fg-1); padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; transition: all 0.2s; font-family: 'Geist Mono', monospace; }
     .copy-code-snippet-btn:hover { background: var(--line); color: var(--fg); }
 
-    /* Checklist */
-    .check-item { display: flex; align-items: center; gap: 10px; color: var(--fg-1); transition: all 0.3s; }
-    .check-item.done { color: var(--fg-3); text-decoration: line-through; opacity: 0.6; }
-    .check-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--fg-2); font-size: 12px; transition: all 0.3s; }
-    .check-item.done .check-icon { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-
     /* Advanced Toggle */
-    details.advanced-settings { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; margin-top: 24px; overflow: hidden; }
-    details.advanced-settings summary { padding: 16px 20px; font-size: 13px; font-weight: 500; color: var(--fg-1); cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; list-style: none; }
-    details.advanced-settings summary::-webkit-details-marker { display: none; }
-    details.advanced-settings summary:hover { color: var(--fg); background: var(--bg-1); }
-    details.advanced-settings[open] summary { border-bottom: 1px solid var(--line-2); color: var(--fg); }
-    .advanced-icon { transition: transform 0.2s; font-size: 10px; color: var(--fg-2); }
-    details[open] .advanced-icon { transform: rotate(180deg); }
-    .advanced-content { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; background: var(--bg-1); }
-    @media (max-width: 850px) { .advanced-content { grid-template-columns: 1fr; } }
+    .advanced-toggle-btn { width: 100%; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--fg-1); padding: 16px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-top: 24px; transition: all 0.2s; }
+    .advanced-toggle-btn:hover { color: var(--fg); background: var(--bg-1); }
+    .advanced-icon { transition: transform 0.3s; font-size: 10px; }
+    .advanced-toggle-btn.open .advanced-icon { transform: rotate(180deg); }
+    .advanced-container { display: none; margin-top: 16px; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .advanced-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 850px) { .advanced-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -200,21 +197,18 @@
         <p style="font-size: 13px; color: var(--fg-1);">Please verify your email to generate API keys. Check your inbox for the verification link.</p>
       </div>
 
-      <!-- ONBOARDING CHECKLIST (Only shows if incomplete) -->
-      <div id="onboarding-checklist" class="key-box hidden" style="background: rgba(255,255,255,0.02); border-color: var(--line-2); margin-bottom: 24px;">
-        <div class="tier-label">Get Started</div>
-        <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Complete these steps to protect your first agent.</p>
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <div class="check-item" id="step-1"><span class="check-icon">1</span><span>Generate your first API key</span></div>
-          <div class="check-item" id="step-2"><span class="check-icon">2</span><span>Make an API call using the SDK</span></div>
-          <div class="check-item" id="step-3"><span class="check-icon">3</span><span>Trip the circuit breaker (Test a loop)</span></div>
-        </div>
+      <!-- HERO ONBOARDING (Shows if 0 keys) -->
+      <div id="hero-onboarding" class="hero-onboarding hidden">
+        <h2>Welcome to AgentTrafficCop.</h2>
+        <p>You haven't generated an API key yet. Generate your first key below to start protecting your agents.</p>
       </div>
 
-      <!-- CORE ESSENTIALS (Always Visible) -->
+      <!-- MAIN GRID -->
       <div class="dashboard-grid">
-        <!-- LEFT COLUMN: API Keys & Quick Start -->
+        <!-- LEFT COLUMN -->
         <div class="col">
+          
+          <!-- API KEYS -->
           <div class="key-box">
             <div class="tier-label">API Keys</div>
             <table class="data-table" id="keys-table">
@@ -225,9 +219,7 @@
                   <th style="text-align: right;">Action</th>
                 </tr>
               </thead>
-              <tbody id="keys-tbody">
-                <!-- Filled by JS -->
-              </tbody>
+              <tbody id="keys-tbody"></tbody>
             </table>
 
             <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
@@ -245,6 +237,7 @@
             </div>
           </div>
 
+          <!-- QUICK START -->
           <div class="key-box">
             <div class="tier-label">Quick Start</div>
             <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Integrate AgentTrafficCop in one line of code.</p>
@@ -289,16 +282,20 @@ except LoopDetected as e:
   }'</code></pre>
             </div>
           </div>
+
         </div>
 
-        <!-- RIGHT COLUMN: Stats -->
+        <!-- RIGHT COLUMN -->
         <div class="col">
-          <div class="tier-box" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
+          
+          <!-- MONEY SAVED (Hidden if 0) -->
+          <div id="money-saved-box" class="tier-box hidden" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
             <div class="tier-label" style="color: var(--accent-2);">Estimated API Cost Avoided</div>
             <div class="tier-value" id="money-saved" style="color: var(--accent-2); font-size: 32px;">$0.00</div>
             <div style="font-size: 12px; color: var(--fg-2); margin-top: 4px;">Based on 7-day trip history * $0.004/msg</div>
           </div>
 
+          <!-- USAGE STATS -->
           <div class="key-box">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div class="tier-label" style="margin-bottom: 0;">Current Plan</div>
@@ -325,16 +322,19 @@ except LoopDetected as e:
             </div>
             <div style="margin-top: 12px; font-size: 11px; color: var(--fg-2); text-align: right;">Resets on <span id="usage-reset">...</span></div>
           </div>
+
         </div>
       </div>
 
-      <!-- ADVANCED SETTINGS TOGGLE -->
-      <details class="advanced-settings">
-        <summary>
-          <span>Advanced Settings & Monitoring</span>
-          <span class="advanced-icon">▼</span>
-        </summary>
-        <div class="advanced-content">
+      <!-- ADVANCED TOGGLE -->
+      <button id="advanced-toggle-btn" class="advanced-toggle-btn" onclick="toggleAdvanced()">
+        <span>Advanced Settings & Monitoring</span>
+        <span class="advanced-icon">▼</span>
+      </button>
+
+      <!-- ADVANCED CONTAINER -->
+      <div id="advanced-container" class="advanced-container">
+        <div class="advanced-grid">
           
           <!-- Webhook -->
           <div class="key-box" style="background: var(--bg-1);">
@@ -352,7 +352,7 @@ except LoopDetected as e:
             <canvas id="usageChart" style="max-height: 160px; margin-top: 16px;"></canvas>
           </div>
 
-          <!-- Session Logs (Full Width) -->
+          <!-- Session Logs -->
           <div class="key-box" style="background: var(--bg-1); grid-column: 1 / -1;">
             <div class="tier-label">Recent Sessions</div>
             <table class="data-table">
@@ -364,13 +364,13 @@ except LoopDetected as e:
                 </tr>
               </thead>
               <tbody id="sessions-tbody">
-                <tr><td colspan="3" style="text-align:center; color: var(--fg-2);">Loading...</td></tr>
+                <tr><td colspan="3" style="text-align:center; color: var(--fg-2);">No sessions logged yet.</td></tr>
               </tbody>
             </table>
           </div>
 
         </div>
-      </details>
+      </div>
 
       <!-- DANGER ZONE -->
       <div class="danger-zone">
@@ -414,6 +414,17 @@ except LoopDetected as e:
     let currentMode = 'login';
 
     hljs.highlightAll();
+
+    function toggleAdvanced() {
+      const btn = document.getElementById('advanced-toggle-btn');
+      const container = document.getElementById('advanced-container');
+      btn.classList.toggle('open');
+      if (container.style.display === 'block') {
+        container.style.display = 'none';
+      } else {
+        container.style.display = 'block';
+      }
+    }
 
     function showConfirmModal(title, message, confirmText = "Confirm") {
       return new Promise((resolve) => {
@@ -603,6 +614,7 @@ except LoopDetected as e:
         const verifyBanner = document.getElementById('verify-banner');
         const genBtn = document.getElementById('gen-btn');
         const keyNameInput = document.getElementById('new-key-name');
+        const heroOnboarding = document.getElementById('hero-onboarding');
         
         if (!data.is_verified) {
           verifyBanner.classList.remove('hidden');
@@ -618,9 +630,18 @@ except LoopDetected as e:
           keyNameInput.style.opacity = '1';
         }
 
+        const hasKey = data.api_keys && data.api_keys.length > 0;
+        
+        // Show Hero Onboarding ONLY if no keys
+        if (!hasKey && data.is_verified) {
+          heroOnboarding.classList.remove('hidden');
+        } else {
+          heroOnboarding.classList.add('hidden');
+        }
+
         const tbody = document.getElementById('keys-tbody');
         tbody.innerHTML = '';
-        if (data.api_keys && data.api_keys.length > 0) {
+        if (hasKey) {
           data.api_keys.forEach(k => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -666,7 +687,15 @@ except LoopDetected as e:
         if (metricsRes.ok) {
           const metricsData = await metricsRes.json();
           totalRejected = metricsData.metrics.reduce((sum, m) => sum + m.rejected, 0);
-          document.getElementById('money-saved').textContent = `$${(totalRejected * 0.004).toFixed(2)}`;
+          
+          // Show Money Saved box ONLY if they have trips
+          const moneyBox = document.getElementById('money-saved-box');
+          if (totalRejected > 0) {
+            moneyBox.classList.remove('hidden');
+            document.getElementById('money-saved').textContent = `$${(totalRejected * 0.004).toFixed(2)}`;
+          } else {
+            moneyBox.classList.add('hidden');
+          }
 
           const ctx = document.getElementById('usageChart').getContext('2d');
           if (window.myUsageChart) window.myUsageChart.destroy();
@@ -676,19 +705,6 @@ except LoopDetected as e:
             options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, grid: { color: '#1f1f1f' }, ticks: { color: '#a1a1a1' } }, y: { stacked: true, grid: { color: '#1f1f1f' }, ticks: { color: '#a1a1a1' } } }, plugins: { legend: { labels: { color: '#ededed' } } } }
           });
         }
-
-        // UPDATE ONBOARDING CHECKLIST
-        const hasKey = data.api_keys && data.api_keys.length > 0;
-        const hasUsage = messagesThisMonth > 0;
-        const hasTripped = totalRejected > 0;
-        const checklist = document.getElementById('onboarding-checklist');
-        
-        function markDone(id) { const el = document.getElementById(id); if(el) { el.classList.add('done'); el.querySelector('.check-icon').innerHTML = '✓'; } }
-        if (hasKey) markDone('step-1');
-        if (hasUsage) markDone('step-2');
-        if (hasTripped) markDone('step-3');
-        if (hasKey && hasUsage && hasTripped) checklist.classList.add('hidden');
-        else checklist.classList.remove('hidden');
 
         // FETCH SESSION LOGS
         const logsRes = await fetch(`${API_BASE}/v1/auth/session-logs`, { headers: { 'Authorization': `Bearer ${token}` } });
