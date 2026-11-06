@@ -72,6 +72,17 @@ class WebhookUpdate(BaseModel):
     )
 
 
+class KeyCreate(BaseModel):
+    """Schema for naming a newly generated API key."""
+    model_config = ConfigDict(extra="forbid")
+    
+    name: str = Field(
+        default="Default", 
+        max_length=50,
+        description="A friendly name to identify this key (e.g. 'LangGraph Prod')"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Outgoing
 # ---------------------------------------------------------------------------

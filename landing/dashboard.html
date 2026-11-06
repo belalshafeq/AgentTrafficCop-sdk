@@ -11,56 +11,37 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root { 
-      --bg: #000000; 
-      --bg-1: #0a0a0a; 
-      --bg-2: #111111; 
-      --fg: #ededed; 
-      --fg-1: #a1a1a1; 
-      --fg-2: #666666; 
-      --fg-3: #333333; 
-      --line: #1f1f1f; 
-      --line-2: #2a2a2a; 
-      --accent: #10b981; 
-      --accent-2: #34d399; 
-      --error: #f87171; 
+      --bg: #000000; --bg-1: #0a0a0a; --bg-2: #111111; --fg: #ededed; --fg-1: #a1a1a1; --fg-2: #666666; 
+      --line: #1f1f1f; --line-2: #2a2a2a; --accent: #10b981; --accent-2: #34d399; --error: #f87171; 
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--bg); color: var(--fg); font-family: 'Geist', -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
-    .mono { font-family: 'Geist Mono', monospace; }
     a { color: inherit; text-decoration: none; }
-    
     header { border-bottom: 1px solid var(--line); padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 500; }
     .brand-mark { width: 20px; height: 20px; border: 1px solid var(--line-2); border-radius: 4px; display: flex; align-items: center; justify-content: center; }
     .brand-mark::after { content: ''; width: 6px; height: 6px; background: var(--fg); border-radius: 50%; }
-    
     .main-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
-    
-    .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 520px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
     
     /* Auth Styles */
     .auth-tabs { display: flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 4px; margin-bottom: 24px; }
     .auth-tab { flex: 1; text-align: center; padding: 8px; font-size: 13px; font-weight: 500; color: var(--fg-1); border-radius: 6px; cursor: pointer; transition: all 0.2s; border: none; background: transparent; }
     .auth-tab:hover { color: var(--fg); }
     .auth-tab.active { background: var(--bg-2); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-    
     .form-group { margin-bottom: 16px; }
     .form-group label { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-1); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Geist Mono', monospace; }
     .input-wrapper { position: relative; }
     .form-group input { width: 100%; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); padding: 12px; border-radius: 6px; font-family: 'Geist', sans-serif; outline: none; transition: border-color 0.2s; }
     .form-group input:focus { border-color: var(--fg-1); }
     .form-group input.invalid { border-color: var(--error); }
-    
     .toggle-password { position: absolute; right: 12px; top: 12px; cursor: pointer; color: var(--fg-2); font-size: 12px; font-weight: 500; user-select: none; transition: color 0.2s; }
     .toggle-password:hover { color: var(--fg); }
-
     .btn-primary { width: 100%; background: var(--fg); color: var(--bg); border: 1px solid var(--fg); padding: 12px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-top: 8px; display: flex; justify-content: center; align-items: center; gap: 8px; }
     .btn-primary:hover { background: transparent; color: var(--fg); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    
     .btn-secondary { background: var(--bg-2); border: 1px solid var(--line-2); color: var(--fg); padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.2s; font-weight: 500; }
     .btn-secondary:hover { background: var(--line); }
-
     .hidden { display: none !important; }
     .error-msg { color: var(--error); font-size: 13px; margin-top: 12px; text-align: center; min-height: 20px; }
 
@@ -71,22 +52,22 @@
     .tier-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
     .tier-label { font-size: 11px; font-family: 'Geist Mono', monospace; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
     .tier-value { font-size: 24px; font-weight: 600; color: var(--accent); text-transform: uppercase; }
-    .key-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; }
+    .key-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
     .fingerprint { font-family: 'Geist Mono', monospace; color: #fcd34d; font-size: 18px; margin-top: 8px; }
     .new-key-alert { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 16px; margin-top: 16px; position: relative; }
     .new-key-label { color: var(--accent-2); font-size: 12px; font-weight: 500; margin-bottom: 4px; }
     .new-key-value { font-family: 'Geist Mono', monospace; font-size: 14px; word-break: break-all; color: var(--fg); padding-right: 60px; }
     .copy-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: var(--accent); color: var(--bg); border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
     .copy-btn:hover { opacity: 0.8; }
-
     .webhook-input { width: 100%; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); padding: 10px; border-radius: 6px; font-family: 'Geist Mono', monospace; font-size: 12px; outline: none; margin-top: 8px; }
-    .webhook-input:focus { border-color: var(--fg-1); }
-    
     .danger-zone { border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05); border-radius: 8px; padding: 20px; margin-top: 40px; }
     .danger-title { color: var(--error); font-size: 14px; font-weight: 600; margin-bottom: 8px; }
     .danger-btn { background: transparent; border: 1px solid var(--error); color: var(--error); padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
     .danger-btn:hover { background: var(--error); color: var(--bg); }
-
+    .key-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    .key-table th, .key-table td { text-align: left; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .key-table th { color: var(--fg-1); font-weight: 500; font-family: 'Geist Mono', monospace; font-size: 11px; text-transform: uppercase; }
+    .key-table td { color: var(--fg-1); font-family: 'Geist Mono', monospace; }
     .page-footer { border-top: 1px solid var(--line); padding: 24px 32px; text-align: center; font-size: 12px; color: var(--fg-2); }
     .page-footer a { margin: 0 8px; transition: color 0.15s; }
     .page-footer a:hover { color: var(--fg); }
@@ -126,7 +107,6 @@
           </div>
         </div>
         
-        <!-- FIX: Forgot Password Link -->
         <div id="forgot-password-wrapper" style="text-align: right; margin-top: -8px; margin-bottom: 16px;">
           <a href="#" id="forgot-link" onclick="switchAuthMode('forgot')" style="font-size: 12px; color: var(--fg-2); text-decoration: none;">Forgot password?</a>
         </div>
@@ -143,7 +123,7 @@
     </div>
 
     <!-- DASHBOARD SECTION -->
-    <div id="dashboard-section" class="card hidden" style="max-width: 520px;">
+    <div id="dashboard-section" class="card hidden">
       <div class="dashboard-header">
         <div>
           <div class="dashboard-title">Your Workspace</div>
@@ -152,7 +132,12 @@
         <button onclick="logout()" class="btn-secondary">Sign Out</button>
       </div>
 
-      <!-- Money Saved Metric -->
+      <!-- Verification Banner -->
+      <div id="verify-banner" class="key-box hidden" style="background: rgba(252, 211, 77, 0.05); border-color: rgba(252, 211, 77, 0.3);">
+        <div class="tier-label" style="color: #fcd34d;">Action Required</div>
+        <p style="font-size: 13px; color: var(--fg-1);">Please verify your email to generate API keys. Check your inbox for the verification link.</p>
+      </div>
+
       <div class="tier-box" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
         <div class="tier-label" style="color: var(--accent-2);">Estimated API Cost Avoided</div>
         <div class="tier-value" id="money-saved" style="color: var(--accent-2); font-size: 32px;">$0.00</div>
@@ -167,7 +152,7 @@
         </div>
       </div>
 
-      <div class="key-box" style="margin-bottom: 24px;">
+      <div class="key-box">
         <div class="tier-label">Protected Agents</div>
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
           <div class="fingerprint" id="agents-count" style="color: var(--fg); font-size: 24px;">...</div>
@@ -178,7 +163,7 @@
         </div>
       </div>
 
-      <div class="key-box" style="margin-bottom: 24px;">
+      <div class="key-box">
         <div class="tier-label">Monthly Messages</div>
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
           <div class="fingerprint" id="usage-count" style="color: var(--fg); font-size: 24px;">...</div>
@@ -187,18 +172,15 @@
         <div style="width: 100%; height: 8px; background: var(--line); border-radius: 4px; margin-top: 12px; overflow: hidden;">
           <div id="usage-progress" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease;"></div>
         </div>
-        <div style="margin-top: 12px; font-size: 12px; color: var(--fg-2);">
-          Resets on <span id="usage-reset">...</span>
-        </div>
+        <div style="margin-top: 12px; font-size: 12px; color: var(--fg-2);">Resets on <span id="usage-reset">...</span></div>
       </div>
 
-      <div class="key-box" style="margin-bottom: 24px;">
+      <div class="key-box">
         <div class="tier-label">7-Day Activity (Approved vs Rejected)</div>
         <canvas id="usageChart" style="max-height: 200px; margin-top: 16px;"></canvas>
       </div>
 
-      <!-- Webhook Alerts -->
-      <div class="key-box" style="margin-bottom: 24px;">
+      <div class="key-box">
         <div class="tier-label">Alert Webhook (Slack / Discord)</div>
         <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 8px;">Get notified instantly when the circuit breaker halts a loop.</p>
         <input type="url" id="webhook-url" class="webhook-input" placeholder="https://discord.com/api/webhooks/..." />
@@ -207,21 +189,30 @@
         </div>
       </div>
 
+      <!-- API KEYS SECTION -->
       <div class="key-box">
-        <div class="tier-label">Active API Key Fingerprint</div>
-        <div class="fingerprint" id="api-fingerprint">...</div>
+        <div class="tier-label">API Keys</div>
         
-        <p style="font-size: 12px; color: var(--fg-2); margin-top: 12px; line-height: 1.4;">
-          For security, keys are only shown once upon creation. If lost, generate a new one.
-        </p>
+        <table class="key-table" id="keys-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Fingerprint</th>
+            </tr>
+          </thead>
+          <tbody id="keys-tbody">
+            <!-- Filled by JS -->
+          </tbody>
+        </table>
 
-        <div style="margin-top: 16px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
-          <div style="font-size: 13px; color: var(--fg-1);">Need a new key?</div>
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
+          <div style="font-size: 13px; color: var(--fg-1); margin-bottom: 8px;">Generate a new key</div>
           <div style="display: flex; gap: 8px;">
-            <button id="revoke-btn" onclick="revokeKey()" class="btn-secondary" style="color: var(--error); border-color: rgba(248, 113, 113, 0.3);">Revoke</button>
-            <button id="gen-btn" onclick="generateKey()" class="btn-secondary">Generate Key</button>
+            <input type="text" id="new-key-name" class="webhook-input" placeholder="e.g. LangGraph Prod" style="margin-top: 0;" />
+            <button id="gen-btn" onclick="generateKey()" class="btn-secondary" style="white-space: nowrap;">Generate Key</button>
           </div>
         </div>
+
         <div id="new-key-display" class="new-key-alert hidden">
           <div class="new-key-label">Save this key. It will not be shown again.</div>
           <div class="new-key-value" id="new-key"></div>
@@ -229,13 +220,11 @@
         </div>
       </div>
 
-      <!-- Danger Zone -->
       <div class="danger-zone">
         <div class="danger-title">Danger Zone</div>
         <p style="font-size: 13px; color: var(--fg-1); margin-bottom: 16px;">Permanently delete your account and all associated API keys. This action cannot be undone.</p>
         <button id="delete-account-btn" class="danger-btn" onclick="deleteAccount()">Delete Account</button>
       </div>
-
     </div>
   </div>
 
@@ -257,7 +246,6 @@
     }
 
     fetch(`${API_BASE}/health`, { method: 'GET' }).catch(() => {});
-
     let currentMode = 'login';
 
     function togglePassword(inputId, el) {
@@ -284,28 +272,17 @@
       document.getElementById('auth-subtitle').textContent = isForgot ? 'Enter your email to receive a reset link.' : (isLogin ? 'Sign in to manage your keys.' : '5 agents free. No credit card required.');
       document.getElementById('submit-btn').textContent = isForgot ? 'Send Reset Link' : (isLogin ? 'Sign In' : 'Generate API Key');
       
-      // Hide/show elements based on mode
       document.getElementById('password-group').classList.toggle('hidden', isForgot);
       document.getElementById('confirm-password-group').classList.toggle('hidden', !isForgot && !isLogin ? false : true);
       document.getElementById('confirm-password').required = (!isLogin && !isForgot);
       document.getElementById('forgot-password-wrapper').classList.toggle('hidden', !isLogin);
       
-      // Hide the tabs if we are in Forgot mode
       document.querySelector('.auth-tabs').style.display = isForgot ? 'none' : 'flex';
       
-      // Update the back to login link
       const link = document.getElementById('forgot-link');
       link.textContent = isForgot ? '← Back to login' : 'Forgot password?';
       link.setAttribute('onclick', isForgot ? "switchAuthMode('login')" : "switchAuthMode('forgot')");
     }
-
-    document.getElementById('email').addEventListener('input', () => {
-        document.getElementById('auth-error').textContent = '';
-        document.getElementById('email').classList.remove('invalid');
-    });
-    document.getElementById('password').addEventListener('input', () => {
-        document.getElementById('auth-error').textContent = '';
-    });
 
     document.getElementById('auth-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -316,8 +293,7 @@
       const errorEl = document.getElementById('auth-error');
       const emailInput = document.getElementById('email');
       
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         errorEl.textContent = "Please enter a valid email address.";
         emailInput.classList.add('invalid');
         return;
@@ -332,64 +308,44 @@
       btn.textContent = "Loading...";
       btn.disabled = true;
       errorEl.textContent = '';
-      errorEl.style.color = 'var(--error)'; // Reset color
+      errorEl.style.color = 'var(--error)';
 
-      const slowTimer = setTimeout(() => {
-        btn.textContent = "Waking up server... (~30s)";
-      }, 3000);
+      const slowTimer = setTimeout(() => { btn.textContent = "Waking up server... (~30s)"; }, 3000);
 
       try {
-        // FIX: Handle Forgot Password Flow
         if (currentMode === 'forgot') {
           const res = await fetch(`${API_BASE}/v1/auth/forgot-password`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email })
           });
           const data = await res.json();
-          
-          if (!res.ok) throw new Error(data.detail || "Failed to send reset link.");
+          if (!res.ok) throw new Error(data.detail || "Failed to send link.");
           
           clearTimeout(slowTimer);
           errorEl.style.color = 'var(--accent)';
           errorEl.textContent = data.message;
           btn.textContent = "Link Sent!";
           setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-          return; // Stop execution here
+          return;
         }
 
-        // Handle Login / Register Flow
         let res;
         if (currentMode === 'login') {
           const formData = new URLSearchParams();
-          formData.append('username', email);
-          formData.append('password', password);
-          res = await fetch(`${API_BASE}/v1/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: formData
-          });
+          formData.append('username', email); formData.append('password', password);
+          res = await fetch(`${API_BASE}/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData });
         } else {
-          res = await fetch(`${API_BASE}/v1/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-          });
+          res = await fetch(`${API_BASE}/v1/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
         }
 
         const data = await res.json();
-        
         if (!res.ok) {
           let errMsg = 'Authentication failed';
           if (data.error === 'SCHEMA_VALIDATION_FAILED' && data.diagnostics?.validation_errors) {
              errMsg = data.diagnostics.validation_errors[0].msg;
-             if (errMsg.includes('valid email')) { 
-                 errMsg = 'Please enter a valid email address.'; 
-                 emailInput.classList.add('invalid'); 
-             }
-          } else if (typeof data.detail === 'string') { errMsg = data.detail; } 
-          else if (Array.isArray(data.detail)) { errMsg = data.detail[0].msg; } 
-          else if (data.message) { errMsg = data.message; }
+             if (errMsg.includes('valid email')) { errMsg = 'Please enter a valid email address.'; emailInput.classList.add('invalid'); }
+          } else if (typeof data.detail === 'string') errMsg = data.detail;
+          else if (Array.isArray(data.detail)) errMsg = data.detail[0].msg;
+          else if (data.message) errMsg = data.message;
           throw new Error(errMsg);
         }
 
@@ -398,17 +354,10 @@
         showDashboard();
 
       } catch (err) {
-        if (err.name === 'TypeError' || err.message.includes('fetch')) {
-           errorEl.textContent = "Network error. Our servers are likely waking up. Please wait 30s and try again.";
-        } else {
-           errorEl.textContent = err.message;
-        }
+        errorEl.textContent = (err.name === 'TypeError' || err.message.includes('fetch')) ? "Network error. Servers waking up. Try again in 30s." : err.message;
       } finally {
         clearTimeout(slowTimer);
-        if (currentMode !== 'forgot') {
-          btn.textContent = originalText;
-          btn.disabled = false;
-        }
+        if (currentMode !== 'forgot') { btn.textContent = originalText; btn.disabled = false; }
       }
     });
 
@@ -420,266 +369,142 @@
       document.getElementById('dashboard-section').classList.remove('hidden');
       
       try {
-        const res = await fetch(`${API_BASE}/v1/auth/me`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (!res.ok) {
-          if (res.status === 401) return logout();
-          throw new Error('Failed to load profile');
-        }
+        const res = await fetch(`${API_BASE}/v1/auth/me`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) { if (res.status === 401) return logout(); throw new Error('Failed'); }
         
         const data = await res.json();
         document.getElementById('user-email').textContent = data.email;
         document.getElementById('user-tier').textContent = data.tier;
-        document.getElementById('api-fingerprint').textContent = data.api_key_fingerprint;
         
-        if (data.webhook_url) {
-          document.getElementById('webhook-url').value = data.webhook_url;
+        // Verification Logic
+        const verifyBanner = document.getElementById('verify-banner');
+        const genBtn = document.getElementById('gen-btn');
+        const keyNameInput = document.getElementById('new-key-name');
+        
+        if (!data.is_verified) {
+          verifyBanner.classList.remove('hidden');
+          genBtn.disabled = true;
+          genBtn.style.opacity = '0.5';
+          keyNameInput.disabled = true;
+          keyNameInput.style.opacity = '0.5';
+        } else {
+          verifyBanner.classList.add('hidden');
+          genBtn.disabled = false;
+          genBtn.style.opacity = '1';
+          keyNameInput.disabled = false;
+          keyNameInput.style.opacity = '1';
         }
 
-        if (data.tier !== 'free') {
-          document.getElementById('upgrade-btn').classList.add('hidden');
+        // Populate Keys Table
+        const tbody = document.getElementById('keys-tbody');
+        tbody.innerHTML = '';
+        if (data.api_keys && data.api_keys.length > 0) {
+          data.api_keys.forEach(k => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${k.name || 'Default'}</td><td style="color:#fcd34d">${k.fingerprint}</td>`;
+            tbody.appendChild(tr);
+          });
+        } else {
+          tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 20px; color: var(--fg-2);">No API keys generated yet.</td></tr>';
         }
-
-        const usageRes = await fetch(`${API_BASE}/v1/auth/usage`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
         
+        if (data.webhook_url) document.getElementById('webhook-url').value = data.webhook_url;
+        if (data.tier !== 'free') document.getElementById('upgrade-btn').classList.add('hidden');
+
+        const usageRes = await fetch(`${API_BASE}/v1/auth/usage`, { headers: { 'Authorization': `Bearer ${token}` } });
         if (usageRes.ok) {
           const usage = await usageRes.json();
-
           document.getElementById('usage-count').textContent = usage.messages_this_month.toLocaleString();
           document.getElementById('usage-limit').textContent = usage.tier_limit.toLocaleString();
           const msgPercent = usage.tier_limit > 0 ? Math.min((usage.messages_this_month / usage.tier_limit) * 100, 100) : 0;
           const msgBar = document.getElementById('usage-progress');
           msgBar.style.width = `${msgPercent}%`;
-          if (msgPercent > 90) msgBar.style.background = 'var(--error)';
-          else if (msgPercent > 75) msgBar.style.background = '#fcd34d';
-          else msgBar.style.background = 'var(--accent)';
+          msgBar.style.background = msgPercent > 90 ? 'var(--error)' : (msgPercent > 75 ? '#fcd34d' : 'var(--accent)');
 
           document.getElementById('agents-count').textContent = (usage.agents_this_month || 0).toLocaleString();
           document.getElementById('agents-limit').textContent = (usage.agent_limit || 5).toLocaleString();
           const agentPercent = usage.agent_limit > 0 ? Math.min(((usage.agents_this_month || 0) / usage.agent_limit) * 100, 100) : 0;
           const agentBar = document.getElementById('agents-progress');
           agentBar.style.width = `${agentPercent}%`;
-          if (agentPercent > 90) agentBar.style.background = 'var(--error)';
-          else if (agentPercent > 75) agentBar.style.background = '#fcd34d';
-          else agentBar.style.background = 'var(--accent)';
+          agentBar.style.background = agentPercent > 90 ? 'var(--error)' : (agentPercent > 75 ? '#fcd34d' : 'var(--accent)');
 
-          const resetDate = new Date(usage.reset_at);
-          document.getElementById('usage-reset').textContent = resetDate.toLocaleDateString();
+          document.getElementById('usage-reset').textContent = new Date(usage.reset_at).toLocaleDateString();
         }
 
-        const metricsRes = await fetch(`${API_BASE}/v1/auth/metrics`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
+        const metricsRes = await fetch(`${API_BASE}/v1/auth/metrics`, { headers: { 'Authorization': `Bearer ${token}` } });
         if (metricsRes.ok) {
           const metricsData = await metricsRes.json();
-          
           const totalRejected = metricsData.metrics.reduce((sum, m) => sum + m.rejected, 0);
-          const savedMoney = totalRejected * 0.004;
-          document.getElementById('money-saved').textContent = `$${savedMoney.toFixed(2)}`;
-
-          const labels = metricsData.metrics.map(m => m.date);
-          const approvedData = metricsData.metrics.map(m => m.approved);
-          const rejectedData = metricsData.metrics.map(m => m.rejected);
+          document.getElementById('money-saved').textContent = `$${(totalRejected * 0.004).toFixed(2)}`;
 
           const ctx = document.getElementById('usageChart').getContext('2d');
           if (window.myUsageChart) window.myUsageChart.destroy();
-
           window.myUsageChart = new Chart(ctx, {
             type: 'bar',
-            data: {
-              labels: labels,
-              datasets: [
-                { label: 'Approved', data: approvedData, backgroundColor: '#10b981' },
-                { label: 'Rejected (Trips)', data: rejectedData, backgroundColor: '#f87171' }
-              ]
-            },
-            options: {
-              responsive: true, maintainAspectRatio: false,
-              scales: {
-                x: { stacked: true, grid: { color: '#1f1f1f' }, ticks: { color: '#a1a1a1' } },
-                y: { stacked: true, grid: { color: '#1f1f1f' }, ticks: { color: '#a1a1a1' } }
-              },
-              plugins: { legend: { labels: { color: '#ededed' } } }
-            }
+            data: { labels: metricsData.metrics.map(m => m.date), datasets: [{ label: 'Approved', data: metricsData.metrics.map(m => m.approved), backgroundColor: '#10b981' }, { label: 'Rejected', data: metricsData.metrics.map(m => m.rejected), backgroundColor: '#f87171' }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true, grid: { color: '#1f1f1f' }, ticks: { color: '#a1a1a1' } }, y: { stacked: true, grid: { color: '#1f1f1f' }, ticks: { color: '#a1a1a1' } } }, plugins: { legend: { labels: { color: '#ededed' } } } }
           });
         }
-
-      } catch (err) { 
-        console.error(err); 
-      }
+      } catch (err) { console.error(err); }
     }
 
     async function generateKey() {
       const btn = document.getElementById('gen-btn');
+      const keyName = document.getElementById('new-key-name').value || 'Default';
       const originalText = btn.textContent;
-      btn.textContent = "Generating...";
-      btn.disabled = true;
+      btn.textContent = "Generating..."; btn.disabled = true;
       
-      const token = localStorage.getItem('atc_token');
       try {
         const res = await fetch(`${API_BASE}/v1/auth/keys`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('atc_token')}` },
+          body: JSON.stringify({ name: keyName })
         });
         if (res.status === 401) return logout();
         const data = await res.json();
         
-        if (res.ok) {
-          showNewKey(data.api_key);
-          showDashboard();
-        } else {
-          btn.textContent = data.detail || "Limit reached";
-          btn.style.color = 'var(--error)';
-          setTimeout(() => { 
-            btn.textContent = originalText; 
-            btn.style.color = '';
-            btn.disabled = false; 
-          }, 3000);
-          return; 
-        }
-      } catch (err) {
-        btn.textContent = "Network Error";
-        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-        return;
-      }
-      btn.textContent = originalText;
-      btn.disabled = false;
-    }
-
-    async function revokeKey() {
-      if (!confirm("Are you sure? This will instantly break any agents using this key.")) return;
-      
-      const btn = document.getElementById('revoke-btn');
-      const originalText = btn.textContent;
-      btn.textContent = "Revoking...";
-      btn.disabled = true;
-
-      const token = localStorage.getItem('atc_token');
-      try {
-        const res = await fetch(`${API_BASE}/v1/auth/keys`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.status === 401) return logout();
-        const data = await res.json();
-        
-        if (res.ok) {
-          btn.textContent = "Revoked!";
-          setTimeout(() => showDashboard(), 1000);
-        } else {
-          btn.textContent = data.detail || "Failed";
-          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-          return;
-        }
-      } catch (err) {
-        btn.textContent = "Network Error";
-        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-        return;
-      }
+        if (res.ok) { showNewKey(data.api_key); document.getElementById('new-key-name').value = ''; showDashboard(); }
+        else { btn.textContent = data.detail || "Limit reached"; btn.style.color = 'var(--error)'; setTimeout(() => { btn.textContent = originalText; btn.style.color = ''; btn.disabled = false; }, 3000); return; }
+      } catch (err) { btn.textContent = "Error"; setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000); return; }
+      btn.textContent = originalText; btn.disabled = false;
     }
 
     async function saveWebhook() {
-      const btn = document.getElementById('save-webhook-btn');
-      const input = document.getElementById('webhook-url');
-      const originalText = btn.textContent;
-      
-      btn.textContent = "Saving...";
-      btn.disabled = true;
-
-      const token = localStorage.getItem('atc_token');
+      const btn = document.getElementById('save-webhook-btn'), input = document.getElementById('webhook-url'), orig = btn.textContent;
+      btn.textContent = "Saving..."; btn.disabled = true;
       try {
         const res = await fetch(`${API_BASE}/v1/auth/webhook`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-          },
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('atc_token')}` },
           body: JSON.stringify({ webhook_url: input.value || null })
         });
-        
-        if (res.ok) {
-          btn.textContent = "Saved!";
-          btn.style.color = 'var(--accent)';
-          btn.style.borderColor = 'var(--accent)';
-          setTimeout(() => { 
-            btn.textContent = originalText; 
-            btn.style.color = '';
-            btn.style.borderColor = '';
-            btn.disabled = false; 
-          }, 2000);
-        } else {
-          btn.textContent = "Failed";
-          btn.style.color = 'var(--error)';
-          setTimeout(() => { 
-            btn.textContent = originalText; 
-            btn.style.color = '';
-            btn.disabled = false; 
-          }, 3000);
-        }
-      } catch (err) {
-        btn.textContent = "Network Error";
-        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-      }
+        if (res.ok) { btn.textContent = "Saved!"; btn.style.color = 'var(--accent)'; setTimeout(() => { btn.textContent = orig; btn.style.color = ''; btn.disabled = false; }, 2000); }
+        else { btn.textContent = "Failed"; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); }
+      } catch (err) { btn.textContent = "Error"; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); }
     }
 
     async function deleteAccount() {
-      if (!confirm("Are you absolutely sure? This will permanently delete your account and all API keys. This cannot be undone.")) return;
-      
-      const btn = document.getElementById('delete-account-btn');
-      const originalText = btn.textContent;
-      btn.textContent = "Deleting...";
-      btn.disabled = true;
-
-      const token = localStorage.getItem('atc_token');
+      if (!confirm("Are you absolutely sure? This will permanently delete your account and all API keys.")) return;
+      const btn = document.getElementById('delete-account-btn'), orig = btn.textContent;
+      btn.textContent = "Deleting..."; btn.disabled = true;
       try {
-        const res = await fetch(`${API_BASE}/v1/auth/account`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (res.ok) {
-          localStorage.removeItem('atc_token');
-          window.location.reload();
-        } else {
-          btn.textContent = "Failed to delete";
-          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-        }
-      } catch (err) {
-        btn.textContent = "Network Error";
-        setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
-      }
+        const res = await fetch(`${API_BASE}/v1/auth/account`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${localStorage.getItem('atc_token')}` } });
+        if (res.ok) { localStorage.removeItem('atc_token'); window.location.reload(); }
+        else { btn.textContent = "Failed"; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); }
+      } catch (err) { btn.textContent = "Error"; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); }
     }
 
-    function showNewKey(key) {
-      document.getElementById('new-key-display').classList.remove('hidden');
-      document.getElementById('new-key').textContent = key;
-    }
-
-    function copyKey() {
-      const key = document.getElementById('new-key').textContent;
-      navigator.clipboard.writeText(key).then(() => {
-        const btn = document.querySelector('.copy-btn');
-        btn.textContent = 'COPIED!';
-        btn.style.background = 'var(--fg)';
-        setTimeout(() => { btn.textContent = 'COPY'; btn.style.background = 'var(--accent)'; }, 2000);
-      });
-    }
-
-    function logout() {
-      localStorage.removeItem('atc_token');
-      window.location.reload();
-    }
+    function showNewKey(key) { document.getElementById('new-key-display').classList.remove('hidden'); document.getElementById('new-key').textContent = key; }
+    function copyKey() { navigator.clipboard.writeText(document.getElementById('new-key').textContent).then(() => { const b = document.querySelector('.copy-btn'); b.textContent = 'COPIED!'; b.style.background = 'var(--fg)'; setTimeout(() => { b.textContent = 'COPY'; b.style.background = 'var(--accent)'; }, 2000); }); }
+    function logout() { localStorage.removeItem('atc_token'); window.location.reload(); }
 
     document.addEventListener("DOMContentLoaded", () => {
       if (localStorage.getItem('atc_token')) showDashboard();
-      if (window.location.search.includes('upgraded=true')) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        setTimeout(showDashboard, 1500);
+      // Handle email verification token in URL
+      if (window.location.search.includes('verify=')) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('verify');
+        fetch(`${API_BASE}/v1/auth/verify-email`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) })
+          .then(res => { if(res.ok) { window.history.replaceState({}, document.title, window.location.pathname); if(localStorage.getItem('atc_token')) showDashboard(); } });
       }
     });
   </script>

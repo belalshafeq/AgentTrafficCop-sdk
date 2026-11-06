@@ -1,7 +1,6 @@
 """SQLite database layer for AgentTrafficCop."""
 
 from __future__ import annotations
-
 import logging
 import os
 import sqlite3
@@ -12,30 +11,19 @@ from typing import Generator
 logger = logging.getLogger("agenttrafficcop.db")
 
 _db_path_env = os.getenv("ATC_DB_PATH")
-if _db_path_env:
-    DB_PATH = Path(_db_path_env)
-else:
-    DB_PATH = Path(__file__).resolve().parent.parent / "agenttrafficcop.db"
+DB_PATH = Path(_db_path_env) if _db_path_env else Path(__file__).resolve().parent.parent / "agenttrafficcop.db"
 
 try:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 except OSError as e:
-    logger.critical(
-        "db_parent_dir_unavailable path=%s error=%s "
-        "hint='On Render, mount a persistent disk and set "
-        "ATC_DB_PATH=/data/agenttrafficcop.db'",
-        DB_PATH.parent,
-        e,
-    )
+    logger.critical("db_parent_dir_unavailable path=%s error=%s", DB_PATH.parent, e)
     raise
 
-
 def init_db() -> None:
-    """Create the tables if they don't exist, and run safe migrations."""
     with get_db() as conn:
         cursor = conn.cursor()
 
-        # Users table
+        # 1. Create Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,16 +33,23 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Safe migrations for Users
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;")
+            # Auto-verify existing users so they don't get locked out
+            cursor.execute("UPDATE users SET is_verified = 1;")
+        except sqlite3.OperationalError: pass
 
-        # FIX: Safe migration for existing DBs. If webhook_url doesn't exist,
-        # this adds it without dropping the table or losing data.
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT;")
+        except sqlite3.OperationalError: pass
+
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN webhook_url TEXT;")
-            logger.info("db_migration_added_webhook_url")
-        except sqlite3.OperationalError:
-            pass # Column already exists
+        except sqlite3.OperationalError: pass
 
-        # API Keys table
+        # 2. Create API Keys table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,8 +62,13 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         """)
+        
+        # Safe migration for API Keys
+        try:
+            cursor.execute("ALTER TABLE api_keys ADD COLUMN name TEXT;")
+        except sqlite3.OperationalError: pass
 
-        # Daily usage for the chart
+        # Daily usage for chart
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS daily_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,13 +80,11 @@ def init_db() -> None:
             )
         """)
 
-        # Indexes for fast lookups
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id) WHERE revoked_at IS NULL")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_fingerprint ON api_keys(fingerprint) WHERE revoked_at IS NULL")
 
         conn.commit()
         logger.info("database_initialized path=%s", DB_PATH)
-
 
 @contextmanager
 def get_db() -> Generator[sqlite3.Connection, None, None]:
@@ -95,9 +93,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
-    except Exception as e:
-        logger.warning("db_pragma_failed error=%s", e)
-
+    except Exception: pass
     try:
         yield conn
     finally:
