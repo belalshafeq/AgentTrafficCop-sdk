@@ -13,7 +13,8 @@ from . import __version__, metrics
 from .audit import audit
 from .circuit_breaker import evaluate
 from .config import settings
-from .exceptions import AgentLimitExceeded, TierLimitExceeded
+from .db import get_db
+from .exceptions import AgentLimitExceeded, TierLimitExceeded, CircuitBreakerTripped
 from .hashing import payload_hash
 from .middleware import check_rate_limit
 from .schemas import (
@@ -38,15 +39,35 @@ from .usage import (
     record_message,
     snapshot,
 )
+from .auth import get_current_user, User
 
 logger = logging.getLogger("agenttrafficcop.routes")
 
 router = APIRouter()
 
 
-# FIX: Admin authorization helper.
-# If ATC_ADMIN_API_KEYS is set, only those keys can hit admin endpoints.
-# If empty, we fall back to requiring the `team` tier.
+# ---------------------------------------------------------------------------
+# Helper: Session Logging for the Dashboard Inspector
+# ---------------------------------------------------------------------------
+
+def _log_session(fingerprint: str, session_id: str, status: str, reason: str = None):
+    """Write a session event to the DB for the user dashboard."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO session_logs (fingerprint, session_id, status, reason) VALUES (?, ?, ?, ?)",
+                (fingerprint, session_id, status, reason)
+            )
+            conn.commit()
+    except Exception as e:
+        logger.error("log_session_failed error=%s", e)
+
+
+# ---------------------------------------------------------------------------
+# Helper: Admin Authorization
+# ---------------------------------------------------------------------------
+
 def _require_admin(key_fingerprint: str) -> None:
     admin_fps = {_fingerprint(k) for k in settings.admin_api_keys}
     if admin_fps:
@@ -64,6 +85,7 @@ def _require_admin(key_fingerprint: str) -> None:
             )
         return
 
+    # Fallback: allow team-tier keys.
     tier, _ = get_tier_and_limit(key_fingerprint)
     if tier != "team":
         raise HTTPException(
@@ -78,7 +100,6 @@ def _require_admin(key_fingerprint: str) -> None:
 # ---------------------------------------------------------------------------
 # Core governance endpoint
 # ---------------------------------------------------------------------------
-
 
 @router.post(
     "/v1/route",
@@ -138,18 +159,22 @@ async def route_message(
 
     digest = payload_hash(message.payload)
     snap = session_store.get_or_create(message.session_id)
-    new_snapshot = evaluate(
-        snap,
-        digest,
-        sender=message.sender,
-        recipient=message.recipient,
-        api_key_fingerprint=key_fingerprint,
-    )
+    
+    try:
+        new_snapshot = evaluate(
+            snap,
+            digest,
+            sender=message.sender,
+            recipient=message.recipient,
+            api_key_fingerprint=key_fingerprint,
+        )
+    except CircuitBreakerTripped as e:
+        _log_session(key_fingerprint, message.session_id, "tripped", e.error_code)
+        raise
 
     elapsed_ms = (time.perf_counter() - started) * 1000.0
 
     # 4. Agent limit — atomic check-and-add.
-    # FIX: Prevents TOCTOU race where concurrent requests bypass the limit.
     agent_limit = settings.agent_limit_for_tier(tier)
     requested_agents = {message.sender, message.recipient}
     allowed, newly_added = check_and_add_agents_atomic(
@@ -176,6 +201,7 @@ async def route_message(
 
     # 5. Record message usage only after all checks pass.
     new_usage = record_message(key_fingerprint)
+    _log_session(key_fingerprint, message.session_id, "approved")
 
     metrics.inc_approved()
     try:
@@ -218,9 +244,35 @@ def _seconds_until_next_month() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Usage endpoint
+# Dashboard: Session Logs
 # ---------------------------------------------------------------------------
 
+@router.get("/v1/auth/session-logs")
+async def get_user_session_logs(current_user: Annotated[User, Depends(get_current_user)]):
+    """Fetch the last 10 session events for the logged-in user."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT fingerprint FROM api_keys WHERE user_id = ? AND revoked_at IS NULL", (current_user.id,))
+        fps = [row["fingerprint"] for row in cursor.fetchall()]
+    
+    if not fps:
+        return {"logs": []}
+        
+    placeholders = ",".join(["?"] * len(fps))
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT session_id, status, reason, created_at FROM session_logs WHERE fingerprint IN ({placeholders}) ORDER BY created_at DESC LIMIT 10",
+            fps
+        )
+        logs = [dict(r) for r in cursor.fetchall()]
+        
+    return {"logs": logs}
+
+
+# ---------------------------------------------------------------------------
+# Usage endpoint
+# ---------------------------------------------------------------------------
 
 @router.get(
     "/v1/usage",
@@ -239,7 +291,6 @@ async def get_my_usage(
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
-
 
 @router.get(
     "/health",
@@ -272,9 +323,8 @@ async def health() -> HealthResponse:
 
 
 # ---------------------------------------------------------------------------
-# Admin: session listing and inspection (now gated)
+# Admin: session listing and inspection
 # ---------------------------------------------------------------------------
-
 
 def _snapshot_to_summary(s: SessionSnapshot, now: float) -> SessionSummary:
     return SessionSummary(
@@ -379,9 +429,8 @@ async def get_session(
 
 
 # ---------------------------------------------------------------------------
-# Admin: bulk cleanup (now gated)
+# Admin: bulk cleanup
 # ---------------------------------------------------------------------------
-
 
 @router.post(
     "/v1/admin/cleanup",
@@ -448,9 +497,8 @@ async def cleanup_sessions(
 
 
 # ---------------------------------------------------------------------------
-# Reset single session (now gated)
+# Reset single session
 # ---------------------------------------------------------------------------
-
 
 @router.delete(
     "/v1/sessions/{session_id}",
@@ -492,7 +540,6 @@ async def reset_session(
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
-
 
 @router.get(
     settings.metrics_path,

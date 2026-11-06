@@ -23,7 +23,7 @@ def init_db() -> None:
     with get_db() as conn:
         cursor = conn.cursor()
 
-        # 1. Create Users table
+        # Users
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,23 +33,12 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Safe migrations for Users
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;")
-            # Auto-verify existing users so they don't get locked out
-            cursor.execute("UPDATE users SET is_verified = 1;")
+        try: cursor.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 0;")
+        except sqlite3.OperationalError: pass
+        try: cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT;")
         except sqlite3.OperationalError: pass
 
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT;")
-        except sqlite3.OperationalError: pass
-
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN webhook_url TEXT;")
-        except sqlite3.OperationalError: pass
-
-        # 2. Create API Keys table
+        # API Keys
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS api_keys (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,13 +51,10 @@ def init_db() -> None:
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         """)
-        
-        # Safe migration for API Keys
-        try:
-            cursor.execute("ALTER TABLE api_keys ADD COLUMN name TEXT;")
+        try: cursor.execute("ALTER TABLE api_keys ADD COLUMN name TEXT;")
         except sqlite3.OperationalError: pass
 
-        # Daily usage for chart
+        # Daily Usage
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS daily_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,8 +66,21 @@ def init_db() -> None:
             )
         """)
 
+        # Session Logs (For the UI Inspector)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS session_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fingerprint TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id) WHERE revoked_at IS NULL")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_fingerprint ON api_keys(fingerprint) WHERE revoked_at IS NULL")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_logs_fp ON session_logs(fingerprint)")
 
         conn.commit()
         logger.info("database_initialized path=%s", DB_PATH)

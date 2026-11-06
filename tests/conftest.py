@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 
 # --- Environment setup (before any app import) -------------------------------
 os.environ["ATC_API_KEYS"] = "test-key-1,test-key-2"
@@ -25,6 +26,7 @@ from app import metrics as _metrics_module  # noqa: E402
 from app import usage as _usage_module  # noqa: E402
 from app.main import app  # noqa: E402
 from app.state import session_store  # noqa: E402
+from app.db import get_db  # noqa: E402
 
 # --- Constants ---------------------------------------------------------------
 
@@ -34,7 +36,6 @@ INVALID_API_KEY = "not-a-real-key"
 
 
 # --- Reset helpers -----------------------------------------------------------
-
 
 def _clear_store() -> None:
     sessions = getattr(session_store, "_sessions", None)
@@ -55,19 +56,21 @@ def _clear_metrics() -> None:
 
 
 def _clear_rate_limiter() -> None:
-    """Clear ALL tier-based rate limiters.
-
-    The middleware now uses a dict of limiters (_limiters) keyed by tier,
-    not a single global _limiter. Clearing only _limiter (the old name)
-    would silently do nothing and rate-limit state would leak across tests.
-    """
     try:
+        # 1. Clear the tier rate limiters
         import app.middleware as mw
         limiters = getattr(mw, "_limiters", None)
-        if limiters is None:
-            return
-        for limiter in limiters.values():
-            calls = getattr(limiter, "_calls", None)
+        if limiters is not None:
+            for limiter in limiters.values():
+                calls = getattr(limiter, "_calls", None)
+                if calls is not None:
+                    calls.clear()
+                    
+        # 2. Clear the auth brute-force limiter (FIXED)
+        import app.auth as auth_module
+        auth_limiter = getattr(auth_module, "_auth_limiter", None)
+        if auth_limiter is not None:
+            calls = getattr(auth_limiter, "_calls", None)
             if calls is not None:
                 calls.clear()
     except Exception:
@@ -75,14 +78,6 @@ def _clear_rate_limiter() -> None:
 
 
 def _clear_usage() -> None:
-    """Clear BOTH the message counter and the agent identity set.
-
-    The in-memory backend tracks two dicts:
-      - _data: message counts per (resolved_key, month)
-      - _agents: agent identity sets per (resolved_key, month)
-    Both must be cleared, otherwise agent counts leak across tests
-    and the agent-limit tests will fail on the second run.
-    """
     try:
         backend = _usage_module.usage_backend
         lock = getattr(backend, "_lock", None)
@@ -100,17 +95,22 @@ def _clear_usage() -> None:
 
 
 def _clear_usage_caches() -> None:
-    """Clear the @lru_cache wrappers on usage.py lookups.
-
-    Without this, the first test that calls get_tier_and_limit() or
-    _resolve_usage_key() caches its result. Any subsequent test that
-    overrides settings (e.g. tier_team_limit or tier_team_agents) will
-    still see the cached value and the override appears to do nothing.
-    This is the classic lru_cache test-pollution trap.
-    """
     try:
         _usage_module._resolve_usage_key.cache_clear()
         _usage_module.get_tier_and_limit.cache_clear()
+    except Exception:
+        pass
+
+
+def _clear_db() -> None:
+    """Wipe the users and api_keys tables between tests so tests are isolated."""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM api_keys")
+            cursor.execute("DELETE FROM users")
+            cursor.execute("DELETE FROM session_logs")
+            conn.commit()
     except Exception:
         pass
 
@@ -126,12 +126,14 @@ def _reset_state():
     _clear_rate_limiter()
     _clear_usage()
     _clear_usage_caches()
+    _clear_db()
     yield
     _clear_store()
     _clear_metrics()
     _clear_rate_limiter()
     _clear_usage()
     _clear_usage_caches()
+    _clear_db()
 
 
 @pytest.fixture()
