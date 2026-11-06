@@ -33,9 +33,11 @@
     /* Auth Card (Centered) */
     .auth-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); margin: 0 auto; }
     
-    /* Dashboard Container (Wide Grid) */
-    .dashboard-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 1050px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
-    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    /* Dashboard Container */
+    .dashboard-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 900px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    
+    /* Main Grid */
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; margin-bottom: 24px; }
     .col { display: flex; flex-direction: column; gap: 24px; }
     
     @media (max-width: 850px) {
@@ -80,11 +82,12 @@
     .copy-btn:hover { opacity: 0.8; }
     .webhook-input { width: 100%; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); padding: 10px; border-radius: 6px; font-family: 'Geist Mono', monospace; font-size: 12px; outline: none; margin-top: 8px; }
     
+    /* Danger Zone */
     .danger-zone { border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05); border-radius: 8px; padding: 20px; margin-top: 24px; }
     .danger-title { color: var(--error); font-size: 14px; font-weight: 600; margin-bottom: 8px; }
     .danger-btn { background: transparent; border: 1px solid var(--error); color: var(--error); padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
     .danger-btn:hover { background: var(--error); color: var(--bg); }
-    
+
     /* Tables */
     .data-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     .data-table th, .data-table td { text-align: left; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -119,6 +122,17 @@
     .check-item.done { color: var(--fg-3); text-decoration: line-through; opacity: 0.6; }
     .check-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--fg-2); font-size: 12px; transition: all 0.3s; }
     .check-item.done .check-icon { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+
+    /* Advanced Toggle */
+    details.advanced-settings { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; margin-top: 24px; overflow: hidden; }
+    details.advanced-settings summary { padding: 16px 20px; font-size: 13px; font-weight: 500; color: var(--fg-1); cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; list-style: none; }
+    details.advanced-settings summary::-webkit-details-marker { display: none; }
+    details.advanced-settings summary:hover { color: var(--fg); background: var(--bg-1); }
+    details.advanced-settings[open] summary { border-bottom: 1px solid var(--line-2); color: var(--fg); }
+    .advanced-icon { transition: transform 0.2s; font-size: 10px; color: var(--fg-2); }
+    details[open] .advanced-icon { transform: rotate(180deg); }
+    .advanced-content { padding: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; background: var(--bg-1); }
+    @media (max-width: 850px) { .advanced-content { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -186,14 +200,23 @@
         <p style="font-size: 13px; color: var(--fg-1);">Please verify your email to generate API keys. Check your inbox for the verification link.</p>
       </div>
 
+      <!-- ONBOARDING CHECKLIST (Only shows if incomplete) -->
+      <div id="onboarding-checklist" class="key-box hidden" style="background: rgba(255,255,255,0.02); border-color: var(--line-2); margin-bottom: 24px;">
+        <div class="tier-label">Get Started</div>
+        <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Complete these steps to protect your first agent.</p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="check-item" id="step-1"><span class="check-icon">1</span><span>Generate your first API key</span></div>
+          <div class="check-item" id="step-2"><span class="check-icon">2</span><span>Make an API call using the SDK</span></div>
+          <div class="check-item" id="step-3"><span class="check-icon">3</span><span>Trip the circuit breaker (Test a loop)</span></div>
+        </div>
+      </div>
+
+      <!-- CORE ESSENTIALS (Always Visible) -->
       <div class="dashboard-grid">
-        <!-- LEFT COLUMN: Developer Actions -->
+        <!-- LEFT COLUMN: API Keys & Quick Start -->
         <div class="col">
-          
-          <!-- API KEYS SECTION -->
           <div class="key-box">
             <div class="tier-label">API Keys</div>
-            
             <table class="data-table" id="keys-table">
               <thead>
                 <tr>
@@ -222,7 +245,6 @@
             </div>
           </div>
 
-          <!-- QUICK START SNIPPETS -->
           <div class="key-box">
             <div class="tier-label">Quick Start</div>
             <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Integrate AgentTrafficCop in one line of code.</p>
@@ -267,57 +289,16 @@ except LoopDetected as e:
   }'</code></pre>
             </div>
           </div>
-
-          <!-- RECENT SESSIONS -->
-          <div class="key-box">
-            <div class="tier-label">Recent Sessions</div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Session ID</th>
-                  <th>Status</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody id="sessions-tbody">
-                <tr><td colspan="3" style="text-align:center; color: var(--fg-2);">Loading...</td></tr>
-              </tbody>
-            </table>
-          </div>
-
         </div>
 
-        <!-- RIGHT COLUMN: Stats, Onboarding, Settings -->
+        <!-- RIGHT COLUMN: Stats -->
         <div class="col">
-          
-          <!-- ONBOARDING CHECKLIST -->
-          <div id="onboarding-checklist" class="key-box hidden" style="background: rgba(255,255,255,0.02); border-color: var(--line-2);">
-            <div class="tier-label">Get Started</div>
-            <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Complete these steps to protect your first agent.</p>
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-              <div class="check-item" id="step-1">
-                <span class="check-icon">1</span>
-                <span>Generate your first API key</span>
-              </div>
-              <div class="check-item" id="step-2">
-                <span class="check-icon">2</span>
-                <span>Make an API call using the SDK</span>
-              </div>
-              <div class="check-item" id="step-3">
-                <span class="check-icon">3</span>
-                <span>Trip the circuit breaker (Test a loop)</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- MONEY SAVED -->
           <div class="tier-box" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
             <div class="tier-label" style="color: var(--accent-2);">Estimated API Cost Avoided</div>
             <div class="tier-value" id="money-saved" style="color: var(--accent-2); font-size: 32px;">$0.00</div>
             <div style="font-size: 12px; color: var(--fg-2); margin-top: 4px;">Based on 7-day trip history * $0.004/msg</div>
           </div>
 
-          <!-- USAGE STATS -->
           <div class="key-box">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div class="tier-label" style="margin-bottom: 0;">Current Plan</div>
@@ -344,15 +325,19 @@ except LoopDetected as e:
             </div>
             <div style="margin-top: 12px; font-size: 11px; color: var(--fg-2); text-align: right;">Resets on <span id="usage-reset">...</span></div>
           </div>
+        </div>
+      </div>
 
-          <!-- CHART -->
-          <div class="key-box">
-            <div class="tier-label">7-Day Activity (Approved vs Rejected)</div>
-            <canvas id="usageChart" style="max-height: 180px; margin-top: 16px;"></canvas>
-          </div>
-
-          <!-- WEBHOOK -->
-          <div class="key-box">
+      <!-- ADVANCED SETTINGS TOGGLE -->
+      <details class="advanced-settings">
+        <summary>
+          <span>Advanced Settings & Monitoring</span>
+          <span class="advanced-icon">▼</span>
+        </summary>
+        <div class="advanced-content">
+          
+          <!-- Webhook -->
+          <div class="key-box" style="background: var(--bg-1);">
             <div class="tier-label">Alert Webhook (Slack / Discord)</div>
             <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 8px;">Get notified when the breaker halts a loop.</p>
             <input type="url" id="webhook-url" class="webhook-input" placeholder="https://discord.com/api/webhooks/..." />
@@ -361,10 +346,33 @@ except LoopDetected as e:
             </div>
           </div>
 
-        </div>
-      </div>
+          <!-- Chart -->
+          <div class="key-box" style="background: var(--bg-1);">
+            <div class="tier-label">7-Day Activity</div>
+            <canvas id="usageChart" style="max-height: 160px; margin-top: 16px;"></canvas>
+          </div>
 
-      <!-- DANGER ZONE (Full Width Bottom) -->
+          <!-- Session Logs (Full Width) -->
+          <div class="key-box" style="background: var(--bg-1); grid-column: 1 / -1;">
+            <div class="tier-label">Recent Sessions</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Session ID</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="sessions-tbody">
+                <tr><td colspan="3" style="text-align:center; color: var(--fg-2);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </details>
+
+      <!-- DANGER ZONE -->
       <div class="danger-zone">
         <div class="danger-title">Danger Zone</div>
         <p style="font-size: 13px; color: var(--fg-1); margin-bottom: 16px;">Permanently delete your account and all associated API keys. This action cannot be undone.</p>
@@ -405,7 +413,6 @@ except LoopDetected as e:
     fetch(`${API_BASE}/health`, { method: 'GET' }).catch(() => {});
     let currentMode = 'login';
 
-    // Initialize syntax highlighting
     hljs.highlightAll();
 
     function showConfirmModal(title, message, confirmText = "Confirm") {
