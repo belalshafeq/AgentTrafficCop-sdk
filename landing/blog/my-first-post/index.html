@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How a Silent Agent Loop Cost Me $3k in API Bills (And How I Fixed It) | AgentTrafficCop Blog</title>
+    <meta name="description" content="My multi-agent system had 100% uptime. But Agent A and Agent B were stuck in a ping-pong loop burning $3k. Here is how I fixed it.">
+    
+    <!-- CRITICAL SEO: Canonical Tag -->
+    <link rel="canonical" href="https://agenttrafficcop.com/blog/silent-agent-loop-cost-3k">
+    
+    <!-- Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+
+    <style>
+        :root { --bg: #000000; --bg-1: #0a0a0a; --fg: #ededed; --fg-1: #a1a1a1; --line: #1f1f1f; --accent: #10b981; }
+        body { background: var(--bg); color: var(--fg); font-family: 'Geist', -apple-system, system-ui, sans-serif; line-height: 1.7; padding: 40px 20px; max-width: 800px; margin: 0 auto; }
+        a { color: var(--accent); text-decoration: none; }
+        .header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 40px; }
+        .post-date { color: var(--fg-1); font-size: 14px; margin-bottom: 10px; font-family: monospace; }
+        .post-title { font-size: 36px; margin-bottom: 20px; letter-spacing: -0.03em; line-height: 1.2; }
+        .content h2 { margin-top: 40px; margin-bottom: 16px; }
+        .content h3 { margin-top: 30px; margin-bottom: 16px; }
+        .content p { margin-bottom: 20px; color: var(--fg-1); }
+        .content ul, .content ol { margin-bottom: 20px; color: var(--fg-1); padding-left: 20px; }
+        .content li { margin-bottom: 8px; }
+        .content pre { background: var(--bg-1) !important; padding: 16px; border-radius: 8px; border: 1px solid var(--line); overflow-x: auto; margin-bottom: 24px; }
+        .content code { font-family: 'Geist Mono', monospace; font-size: 14px; }
+        .content p code { background: var(--bg-1); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); }
+        .content blockquote { border-left: 4px solid var(--accent); padding-left: 16px; color: var(--fg-1); font-style: italic; margin-bottom: 24px; }
+        
+        /* CTA Box */
+        .cta-box { background: var(--bg-1); border: 1px solid var(--line); padding: 32px; border-radius: 12px; text-align: center; margin-top: 60px; }
+        .cta-btn { display: inline-block; background: var(--fg); color: var(--bg); padding: 12px 24px; border-radius: 6px; font-weight: bold; margin-top: 16px; transition: background 0.2s; }
+        .cta-btn:hover { background: var(--accent); color: var(--bg); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/">← Back to AgentTrafficCop</a> | <a href="/blog/">Blog Home</a>
+    </div>
+    
+    <div class="post-date">2026-11-06</div>
+    <h1 class="post-title">How a Silent Agent Loop Cost Me $3k in API Bills (And How I Fixed It)</h1>
+    
+    <div class="content">
+        <p>Last year, I woke up to a <strong>$3,000 OpenAI bill</strong>.</p>
+<p>I panicked. I assumed my API key had been leaked, or I was being hit by a massive DDoS attack. I pulled up the logs expecting to find a catastrophic crash or a massive spike in user traffic.</p>
+<p>Instead, I found <code>200 OKs</code>.</p>
+<p>My multi-agent system had 100% uptime. The server was healthy. The database was fine. But Agent A and Agent B were stuck in a polite ping-pong loop. Agent A asked for a review. Agent B provided a review. Agent A asked for a review again.</p>
+<p>They had been talking to each other in circles for 8 hours straight. The framework thought everything was fine, and my API budget was draining in the background.</p>
+<p>This is the silent killer of multi-agent systems. Here is why it happens, why your standard retry logic won't save you, and how to build a runtime circuit breaker to stop it.</p>
+<h2>The Technical Diagnosis: Why Retries Don't Work</h2>
+<p>If you are using frameworks like LangGraph, CrewAI, or AutoGen, you probably have <code>max_retries</code> configured. I did too.</p>
+<p>But a retry limit only triggers when an agent throws an error (like a 500, a timeout, or a malformed JSON response).</p>
+<p>An agent loop isn't an error. The LLM is successfully generating tokens. It is returning valid, perfectly formatted Pydantic output. The framework sees a successful handoff. The HTTP status is <code>200 OK</code>.</p>
+<p>There are two patterns that will drain your budget:</p>
+<ol>
+<li><strong>The Repeated Loop:</strong> A -&gt; A -&gt; A -&gt; A. The model gets stuck on a single thought and repeats it indefinitely.</li>
+<li><strong>The Cyclic Loop:</strong> A -&gt; B -&gt; A -&gt; B. Two agents get stuck validating each other's work forever.</li>
+</ol>
+<p>If you are only monitoring HTTP codes or infrastructure uptime, you will never catch this. The agents are healthy, they are just burning your runway.</p>
+<h2>The Naive Fix (And Why It Fails)</h2>
+<p>When I realized what was happening, my first instinct was to write a manual loop counter.</p>
+<p>I wrote something like this:</p>
+<h1>The Naive Counter</h1>
+<p>execution_count = 0</p>
+<p>def guarded_node(state):
+    global execution_count
+    execution_count += 1</p>
+<div class="codehilite"><pre><span></span><code>if execution_count &gt; 3:
+    raise Exception("Loop detected!")
+
+return agent.run(state)
+</code></pre></div>
+
+<p>This worked for a single-agent setup. But it fell apart the moment I scaled to a multi-agent swarm.</p>
+<p>It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the A -&gt; B -&gt; A pattern, just the total number of executions.</p>
+<p>State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.</p>
+<p>It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.</p>
+<p>The Robust Fix: A Runtime Circuit Breaker
+To actually stop runaway spend, you need a deterministic check that happens at the handoff layer, before the next API token is generated.</p>
+<p>You need to hash the payload.</p>
+<p>Every time an agent prepares to pass a message to another agent, you intercept that payload, serialize it, and run it through a SHA-256 hash.</p>
+<p>If you keep a sliding window of the last 3 hashes, you can instantly detect loops:</p>
+<p>If hash_1 == hash_2 == hash_3, you have a Repeated Loop.</p>
+<p>If hash_1 == hash_3 and hash_2 is different, you have a Cyclic Loop.</p>
+<p>Instead of letting the agents keep talking, you throw a 422 Unprocessable Entity error back to the orchestrator, forcibly halting the session.</p>
+<p>Enter AgentTrafficCop
+After spending a weekend writing custom hashing logic and state trackers for my own projects, I realized how tedious this was.</p>
+<p>So we built AgentTrafficCop — a lightweight runtime middleware that sits between your agents and acts as a circuit breaker.</p>
+<p>We designed it so you don't have to rewrite your graph. If you are using LangGraph, integration is literally one line of code:</p>
+<p>from agenttrafficcop import guarded_node</p>
+<h1>Wrap your existing node</h1>
+<p>guarded_node(my_agent_node, guard=guard)
+Once installed, AgentTrafficCop intercepts every handoff, hashes the payload, and kills the session if it detects a loop.</p>
+<p>But killing the process is only half the battle. If a loop happens, you need to know about it.</p>
+<p>When the middleware trips the circuit breaker, it instantly fires a webhook to your Slack or Discord, so your team knows exactly which session was killed before the bill spikes.</p>
+<p>We also built a dashboard that tracks Money Saved based on the number of loops prevented, along with a 7-day view of approved vs. rejected handoffs.</p>
+<p>The Lesson: Monitor State, Not Uptime
+In deterministic software, a 200 OK means everything is working. In probabilistic AI systems, a 200 OK just means the model successfully generated text. It doesn't mean the text was useful, and it certainly doesn't mean you aren't stuck in a loop.</p>
+<p>Stop relying on HTTP status codes to monitor your agent health. Monitor the state.</p>
+<p>If you want to stop writing custom loop counters and protect your API budget, AgentTrafficCop is live. The free tier protects up to 5 agents and 10,000 messages per month (no credit card required).</p>
+<p>You can install the SDK directly from PyPI:</p>
+<p>pip install agenttrafficcop
+Stop letting your agents burn money in a while(True) loop. Get your free API key at agenttrafficcop.com.</p>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-box">
+        <h2>Stop your agents from burning your API budget.</h2>
+        <p style="color: var(--fg-1);">Get a free API key in 60 seconds. No credit card required.</p>
+        <a href="/dashboard.html" class="cta-btn">Get Your Free API Key →</a>
+    </div>
+</body>
+</html>
