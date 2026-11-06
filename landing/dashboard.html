@@ -198,6 +198,7 @@
             <tr>
               <th>Name</th>
               <th>Fingerprint</th>
+              <th style="text-align: right;">Action</th>
             </tr>
           </thead>
           <tbody id="keys-tbody">
@@ -376,7 +377,6 @@
         document.getElementById('user-email').textContent = data.email;
         document.getElementById('user-tier').textContent = data.tier;
         
-        // Verification Logic
         const verifyBanner = document.getElementById('verify-banner');
         const genBtn = document.getElementById('gen-btn');
         const keyNameInput = document.getElementById('new-key-name');
@@ -395,17 +395,22 @@
           keyNameInput.style.opacity = '1';
         }
 
-        // Populate Keys Table
         const tbody = document.getElementById('keys-tbody');
         tbody.innerHTML = '';
         if (data.api_keys && data.api_keys.length > 0) {
           data.api_keys.forEach(k => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `<td>${k.name || 'Default'}</td><td style="color:#fcd34d">${k.fingerprint}</td>`;
+            tr.innerHTML = `
+              <td>${k.name || 'Default'}</td>
+              <td style="color:#fcd34d">${k.fingerprint}</td>
+              <td style="text-align: right;">
+                <button onclick="deleteKey('${k.fingerprint}')" class="btn-secondary" style="padding: 4px 8px; font-size: 11px; color: var(--error); border-color: rgba(248, 113, 113, 0.3);">Revoke</button>
+              </td>
+            `;
             tbody.appendChild(tr);
           });
         } else {
-          tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; padding: 20px; color: var(--fg-2);">No API keys generated yet.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--fg-2);">No API keys generated yet.</td></tr>';
         }
         
         if (data.webhook_url) document.getElementById('webhook-url').value = data.webhook_url;
@@ -467,6 +472,28 @@
         else { btn.textContent = data.detail || "Limit reached"; btn.style.color = 'var(--error)'; setTimeout(() => { btn.textContent = originalText; btn.style.color = ''; btn.disabled = false; }, 3000); return; }
       } catch (err) { btn.textContent = "Error"; setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000); return; }
       btn.textContent = originalText; btn.disabled = false;
+    }
+
+    async function deleteKey(fingerprint) {
+      if (!confirm("Are you sure? This will instantly break any agents using this key.")) return;
+      
+      try {
+        const res = await fetch(`${API_BASE}/v1/auth/keys/${fingerprint}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('atc_token')}` }
+        });
+        
+        if (res.status === 401) return logout();
+        
+        if (res.ok) {
+          showDashboard(); // Refresh the table
+        } else {
+          const data = await res.json();
+          alert(data.detail || "Failed to revoke key.");
+        }
+      } catch (err) {
+        alert("Network Error.");
+      }
     }
 
     async function saveWebhook() {
