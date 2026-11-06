@@ -22,13 +22,27 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--bg); color: var(--fg); font-family: 'Geist', -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
     a { color: inherit; text-decoration: none; }
+    
     header { border-bottom: 1px solid var(--line); padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 500; }
     .brand-mark { width: 20px; height: 20px; border: 1px solid var(--line-2); border-radius: 4px; display: flex; align-items: center; justify-content: center; }
     .brand-mark::after { content: ''; width: 6px; height: 6px; background: var(--fg); border-radius: 50%; }
-    .main-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
-    .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 520px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
     
+    .main-container { flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; }
+    
+    /* Auth Card (Centered) */
+    .auth-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); margin: 0 auto; }
+    
+    /* Dashboard Container (Wide Grid) */
+    .dashboard-card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 1050px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .col { display: flex; flex-direction: column; gap: 24px; }
+    
+    @media (max-width: 850px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .dashboard-card { padding: 20px; }
+    }
+
     /* Auth Styles */
     .auth-tabs { display: flex; background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 4px; margin-bottom: 24px; }
     .auth-tab { flex: 1; text-align: center; padding: 8px; font-size: 13px; font-weight: 500; color: var(--fg-1); border-radius: 6px; cursor: pointer; transition: all 0.2s; border: none; background: transparent; }
@@ -54,10 +68,10 @@
     .dashboard-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
     .dashboard-title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
     .dashboard-email { color: var(--fg-1); font-size: 13px; margin-top: 4px; }
-    .tier-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .tier-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; }
     .tier-label { font-size: 11px; font-family: 'Geist Mono', monospace; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
     .tier-value { font-size: 24px; font-weight: 600; color: var(--accent); text-transform: uppercase; }
-    .key-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    .key-box { background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 20px; }
     .fingerprint { font-family: 'Geist Mono', monospace; color: #fcd34d; font-size: 18px; margin-top: 8px; }
     .new-key-alert { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 16px; margin-top: 16px; position: relative; }
     .new-key-label { color: var(--accent-2); font-size: 12px; font-weight: 500; margin-bottom: 4px; }
@@ -65,7 +79,8 @@
     .copy-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: var(--accent); color: var(--bg); border: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
     .copy-btn:hover { opacity: 0.8; }
     .webhook-input { width: 100%; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); padding: 10px; border-radius: 6px; font-family: 'Geist Mono', monospace; font-size: 12px; outline: none; margin-top: 8px; }
-    .danger-zone { border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05); border-radius: 8px; padding: 20px; margin-top: 40px; }
+    
+    .danger-zone { border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05); border-radius: 8px; padding: 20px; margin-top: 24px; }
     .danger-title { color: var(--error); font-size: 14px; font-weight: 600; margin-bottom: 8px; }
     .danger-btn { background: transparent; border: 1px solid var(--error); color: var(--error); padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
     .danger-btn:hover { background: var(--error); color: var(--bg); }
@@ -117,7 +132,7 @@
 
   <div class="main-container">
     <!-- AUTH SECTION -->
-    <div id="auth-section" class="card">
+    <div id="auth-section" class="auth-card">
       <div class="auth-tabs">
         <button class="auth-tab active" id="tab-login" onclick="switchAuthMode('login')">Sign In</button>
         <button class="auth-tab" id="tab-register" onclick="switchAuthMode('register')">Claim Free Key</button>
@@ -156,7 +171,7 @@
     </div>
 
     <!-- DASHBOARD SECTION -->
-    <div id="dashboard-section" class="card hidden">
+    <div id="dashboard-section" class="dashboard-card hidden">
       <div class="dashboard-header">
         <div>
           <div class="dashboard-title">Your Workspace</div>
@@ -166,144 +181,60 @@
       </div>
 
       <!-- Verification Banner -->
-      <div id="verify-banner" class="key-box hidden" style="background: rgba(252, 211, 77, 0.05); border-color: rgba(252, 211, 77, 0.3);">
+      <div id="verify-banner" class="key-box hidden" style="background: rgba(252, 211, 77, 0.05); border-color: rgba(252, 211, 77, 0.3); margin-bottom: 24px;">
         <div class="tier-label" style="color: #fcd34d;">Action Required</div>
         <p style="font-size: 13px; color: var(--fg-1);">Please verify your email to generate API keys. Check your inbox for the verification link.</p>
       </div>
 
-      <!-- ONBOARDING CHECKLIST -->
-      <div id="onboarding-checklist" class="key-box hidden" style="background: rgba(255,255,255,0.02); border-color: var(--line-2);">
-        <div class="tier-label">Get Started</div>
-        <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Complete these steps to protect your first agent.</p>
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <div class="check-item" id="step-1">
-            <span class="check-icon">1</span>
-            <span>Generate your first API key</span>
+      <div class="dashboard-grid">
+        <!-- LEFT COLUMN: Developer Actions -->
+        <div class="col">
+          
+          <!-- API KEYS SECTION -->
+          <div class="key-box">
+            <div class="tier-label">API Keys</div>
+            
+            <table class="data-table" id="keys-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Fingerprint</th>
+                  <th style="text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="keys-tbody">
+                <!-- Filled by JS -->
+              </tbody>
+            </table>
+
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
+              <div style="font-size: 13px; color: var(--fg-1); margin-bottom: 8px;">Generate a new key</div>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="new-key-name" class="webhook-input" placeholder="e.g. LangGraph Prod" style="margin-top: 0;" />
+                <button id="gen-btn" onclick="generateKey()" class="btn-secondary" style="white-space: nowrap;">Generate Key</button>
+              </div>
+            </div>
+
+            <div id="new-key-display" class="new-key-alert hidden">
+              <div class="new-key-label">Save this key. It will not be shown again.</div>
+              <div class="new-key-value" id="new-key"></div>
+              <button class="copy-btn" onclick="copyKey()">COPY</button>
+            </div>
           </div>
-          <div class="check-item" id="step-2">
-            <span class="check-icon">2</span>
-            <span>Make an API call using the SDK</span>
-          </div>
-          <div class="check-item" id="step-3">
-            <span class="check-icon">3</span>
-            <span>Trip the circuit breaker (Test a loop)</span>
-          </div>
-        </div>
-      </div>
 
-      <div class="tier-box" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
-        <div class="tier-label" style="color: var(--accent-2);">Estimated API Cost Avoided</div>
-        <div class="tier-value" id="money-saved" style="color: var(--accent-2); font-size: 32px;">$0.00</div>
-        <div style="font-size: 12px; color: var(--fg-2); margin-top: 4px;">Based on 7-day trip history * $0.004/msg</div>
-      </div>
+          <!-- QUICK START SNIPPETS -->
+          <div class="key-box">
+            <div class="tier-label">Quick Start</div>
+            <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Integrate AgentTrafficCop in one line of code.</p>
+            
+            <div class="code-tabs">
+              <button class="code-tab active" onclick="switchCodeTab('python')">Python</button>
+              <button class="code-tab" onclick="switchCodeTab('curl')">cURL</button>
+            </div>
 
-      <div class="tier-box">
-        <div class="tier-label">Current Plan</div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="tier-value" id="user-tier">...</div>
-          <button id="upgrade-btn" class="btn-primary" disabled style="width: auto; padding: 8px 16px; margin-top: 0; font-size: 13px; opacity: 0.5; cursor: not-allowed;">Pro (Coming Soon)</button>
-        </div>
-      </div>
-
-      <div class="key-box">
-        <div class="tier-label">Protected Agents</div>
-        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
-          <div class="fingerprint" id="agents-count" style="color: var(--fg); font-size: 24px;">...</div>
-          <div style="font-size: 13px; color: var(--fg-2);">/ <span id="agents-limit">...</span> agents</div>
-        </div>
-        <div style="width: 100%; height: 8px; background: var(--line); border-radius: 4px; margin-top: 12px; overflow: hidden;">
-          <div id="agents-progress" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease;"></div>
-        </div>
-      </div>
-
-      <div class="key-box">
-        <div class="tier-label">Monthly Messages</div>
-        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
-          <div class="fingerprint" id="usage-count" style="color: var(--fg); font-size: 24px;">...</div>
-          <div style="font-size: 13px; color: var(--fg-2);">/ <span id="usage-limit">...</span> msgs</div>
-        </div>
-        <div style="width: 100%; height: 8px; background: var(--line); border-radius: 4px; margin-top: 12px; overflow: hidden;">
-          <div id="usage-progress" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease;"></div>
-        </div>
-        <div style="margin-top: 12px; font-size: 12px; color: var(--fg-2);">Resets on <span id="usage-reset">...</span></div>
-      </div>
-
-      <!-- RECENT SESSIONS UI -->
-      <div class="key-box">
-        <div class="tier-label">Recent Sessions</div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Session ID</th>
-              <th>Status</th>
-              <th>Reason</th>
-            </tr>
-          </thead>
-          <tbody id="sessions-tbody">
-            <tr><td colspan="3" style="text-align:center; color: var(--fg-2);">Loading...</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="key-box">
-        <div class="tier-label">7-Day Activity (Approved vs Rejected)</div>
-        <canvas id="usageChart" style="max-height: 200px; margin-top: 16px;"></canvas>
-      </div>
-
-      <div class="key-box">
-        <div class="tier-label">Alert Webhook (Slack / Discord)</div>
-        <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 8px;">Get notified instantly when the circuit breaker halts a loop.</p>
-        <input type="url" id="webhook-url" class="webhook-input" placeholder="https://discord.com/api/webhooks/..." />
-        <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
-          <button id="save-webhook-btn" class="btn-secondary" onclick="saveWebhook()">Save Webhook</button>
-        </div>
-      </div>
-
-      <!-- API KEYS SECTION -->
-      <div class="key-box">
-        <div class="tier-label">API Keys</div>
-        
-        <table class="key-table data-table" id="keys-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Fingerprint</th>
-              <th style="text-align: right;">Action</th>
-            </tr>
-          </thead>
-          <tbody id="keys-tbody">
-            <!-- Filled by JS -->
-          </tbody>
-        </table>
-
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
-          <div style="font-size: 13px; color: var(--fg-1); margin-bottom: 8px;">Generate a new key</div>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="new-key-name" class="webhook-input" placeholder="e.g. LangGraph Prod" style="margin-top: 0;" />
-            <button id="gen-btn" onclick="generateKey()" class="btn-secondary" style="white-space: nowrap;">Generate Key</button>
-          </div>
-        </div>
-
-        <div id="new-key-display" class="new-key-alert hidden">
-          <div class="new-key-label">Save this key. It will not be shown again.</div>
-          <div class="new-key-value" id="new-key"></div>
-          <button class="copy-btn" onclick="copyKey()">COPY</button>
-        </div>
-      </div>
-
-      <!-- QUICK START SNIPPETS -->
-      <div class="key-box">
-        <div class="tier-label">Quick Start</div>
-        <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Integrate AgentTrafficCop in one line of code.</p>
-        
-        <div class="code-tabs">
-          <button class="code-tab active" onclick="switchCodeTab('python')">Python</button>
-          <button class="code-tab" onclick="switchCodeTab('curl')">cURL</button>
-        </div>
-
-        <div id="code-python" class="code-container">
-          <button class="copy-code-snippet-btn" onclick="copySnippet('python')">COPY</button>
-          <pre><code class="language-python" id="python-snippet">from agenttrafficcop import Guard, LoopDetected
+            <div id="code-python" class="code-container">
+              <button class="copy-code-snippet-btn" onclick="copySnippet('python')">COPY</button>
+              <pre><code class="language-python" id="python-snippet">from agenttrafficcop import Guard, LoopDetected
 
 guard = Guard(
     url="https://api.agenttrafficcop.com",
@@ -320,11 +251,11 @@ try:
     print("Approved!")
 except LoopDetected as e:
     print(f"Loop caught: {e.error_code}")</code></pre>
-        </div>
+            </div>
 
-        <div id="code-curl" class="code-container hidden">
-          <button class="copy-code-snippet-btn" onclick="copySnippet('curl')">COPY</button>
-          <pre><code class="language-bash" id="curl-snippet">curl -X POST https://api.agenttrafficcop.com/v1/route \
+            <div id="code-curl" class="code-container hidden">
+              <button class="copy-code-snippet-btn" onclick="copySnippet('curl')">COPY</button>
+              <pre><code class="language-bash" id="curl-snippet">curl -X POST https://api.agenttrafficcop.com/v1/route \
   -H "content-type: application/json" \
   -H "authorization: Bearer YOUR_API_KEY_HERE" \
   -d '{
@@ -334,9 +265,106 @@ except LoopDetected as e:
     "intent": "handoff",
     "payload": {"diff": "fix typo"}
   }'</code></pre>
+            </div>
+          </div>
+
+          <!-- RECENT SESSIONS -->
+          <div class="key-box">
+            <div class="tier-label">Recent Sessions</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Session ID</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="sessions-tbody">
+                <tr><td colspan="3" style="text-align:center; color: var(--fg-2);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+        <!-- RIGHT COLUMN: Stats, Onboarding, Settings -->
+        <div class="col">
+          
+          <!-- ONBOARDING CHECKLIST -->
+          <div id="onboarding-checklist" class="key-box hidden" style="background: rgba(255,255,255,0.02); border-color: var(--line-2);">
+            <div class="tier-label">Get Started</div>
+            <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 16px;">Complete these steps to protect your first agent.</p>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div class="check-item" id="step-1">
+                <span class="check-icon">1</span>
+                <span>Generate your first API key</span>
+              </div>
+              <div class="check-item" id="step-2">
+                <span class="check-icon">2</span>
+                <span>Make an API call using the SDK</span>
+              </div>
+              <div class="check-item" id="step-3">
+                <span class="check-icon">3</span>
+                <span>Trip the circuit breaker (Test a loop)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- MONEY SAVED -->
+          <div class="tier-box" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
+            <div class="tier-label" style="color: var(--accent-2);">Estimated API Cost Avoided</div>
+            <div class="tier-value" id="money-saved" style="color: var(--accent-2); font-size: 32px;">$0.00</div>
+            <div style="font-size: 12px; color: var(--fg-2); margin-top: 4px;">Based on 7-day trip history * $0.004/msg</div>
+          </div>
+
+          <!-- USAGE STATS -->
+          <div class="key-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div class="tier-label" style="margin-bottom: 0;">Current Plan</div>
+              <div class="tier-value" id="user-tier" style="font-size: 16px;">...</div>
+            </div>
+            <button id="upgrade-btn" class="btn-primary" disabled style="width: 100%; padding: 8px 16px; font-size: 13px; opacity: 0.5; cursor: not-allowed; margin-bottom: 24px;">Pro (Coming Soon)</button>
+
+            <div class="tier-label">Protected Agents</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
+              <div class="fingerprint" id="agents-count" style="color: var(--fg); font-size: 20px;">...</div>
+              <div style="font-size: 12px; color: var(--fg-2);">/ <span id="agents-limit">...</span></div>
+            </div>
+            <div style="width: 100%; height: 6px; background: var(--line); border-radius: 4px; margin-top: 8px; overflow: hidden;">
+              <div id="agents-progress" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease;"></div>
+            </div>
+
+            <div class="tier-label" style="margin-top: 24px;">Monthly Messages</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px;">
+              <div class="fingerprint" id="usage-count" style="color: var(--fg); font-size: 20px;">...</div>
+              <div style="font-size: 12px; color: var(--fg-2);">/ <span id="usage-limit">...</span></div>
+            </div>
+            <div style="width: 100%; height: 6px; background: var(--line); border-radius: 4px; margin-top: 8px; overflow: hidden;">
+              <div id="usage-progress" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.5s ease;"></div>
+            </div>
+            <div style="margin-top: 12px; font-size: 11px; color: var(--fg-2); text-align: right;">Resets on <span id="usage-reset">...</span></div>
+          </div>
+
+          <!-- CHART -->
+          <div class="key-box">
+            <div class="tier-label">7-Day Activity (Approved vs Rejected)</div>
+            <canvas id="usageChart" style="max-height: 180px; margin-top: 16px;"></canvas>
+          </div>
+
+          <!-- WEBHOOK -->
+          <div class="key-box">
+            <div class="tier-label">Alert Webhook (Slack / Discord)</div>
+            <p style="font-size: 12px; color: var(--fg-2); margin-bottom: 8px;">Get notified when the breaker halts a loop.</p>
+            <input type="url" id="webhook-url" class="webhook-input" placeholder="https://discord.com/api/webhooks/..." />
+            <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+              <button id="save-webhook-btn" class="btn-secondary" onclick="saveWebhook()">Save Webhook</button>
+            </div>
+          </div>
+
         </div>
       </div>
 
+      <!-- DANGER ZONE (Full Width Bottom) -->
       <div class="danger-zone">
         <div class="danger-title">Danger Zone</div>
         <p style="font-size: 13px; color: var(--fg-1); margin-bottom: 16px;">Permanently delete your account and all associated API keys. This action cannot be undone.</p>
