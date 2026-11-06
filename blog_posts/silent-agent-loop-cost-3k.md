@@ -1,4 +1,3 @@
-<<<<<<< HEAD:blog_posts/silent-agent-loop-cost-3k.md
 ---
 title: "How a Silent Agent Loop Cost Me $3k in API Bills (And How I Fixed It)"
 date: "2026-11-06"
@@ -103,5 +102,3 @@ You can install the SDK directly from PyPI:
 
 pip install agenttrafficcop
 Stop letting your agents burn money in a while(True) loop. Get your free API key at agenttrafficcop.com.
-=======
->>>>>>> 5705820 (fix: blog):blog_posts/my-first-post.md
