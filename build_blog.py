@@ -1,4 +1,5 @@
 import os
+import shutil
 import frontmatter
 import markdown
 
@@ -8,6 +9,10 @@ TEMPLATE_PATH = "blog_template.html"
 INDEX_TEMPLATE_PATH = "blog_index_template.html"
 
 def build():
+    # Clean out the old blog folder first to prevent stale URLs
+    if os.path.exists(OUTPUT_DIR):
+        shutil.rmtree(OUTPUT_DIR)
+    
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     posts = []
     
