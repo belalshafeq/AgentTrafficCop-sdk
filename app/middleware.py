@@ -52,22 +52,71 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 
 # ---------------------------------------------------------------------------
-# Rate limiting — simple in-process sliding window
+# Rate limiting — Redis-backed with in-memory fallback
 # ---------------------------------------------------------------------------
 
 
-class _SlidingWindowLimiter:
-    """Per-key sliding-window rate limiter (in-process)."""
+class _RateLimiter:
+    """Per-key rate limiter.
+
+    If Redis is configured, it uses Redis INCR/EXPIRE for global,
+    multi-instance accuracy. If Redis is down or not configured, it falls
+    back to a thread-safe in-process sliding window.
+    """
 
     def __init__(self, max_per_window: int, window_seconds: int = 60, max_clients: int = 10000) -> None:
         self._max = max_per_window
         self._window = window_seconds
         self._max_clients = max_clients
+        
+        # Try to connect to Redis
+        self._redis = None
+        if settings.redis_url:
+            try:
+                import redis
+                self._redis = redis.Redis.from_url(
+                    settings.redis_url, 
+                    decode_responses=True,
+                    socket_timeout=2.0,
+                    socket_connect_timeout=2.0
+                )
+                self._redis.ping()
+                logger.info("rate_limiter_using_redis url=%s", settings.redis_url)
+            except Exception as e:
+                logger.warning("rate_limiter_redis_failed error=%s falling_back=in_memory", e)
+                self._redis = None
+                
+        # Fallback in-memory store
         self._calls: Dict[str, Deque[float]] = {}
 
     def check(self, key: str) -> tuple[bool, int]:
-        now = time.monotonic()
-        cutoff = now - self._window
+        """Record a call for *key*. Returns (allowed, retry_after_seconds)."""
+        
+        # --- REDIS IMPLEMENTATION ---
+        if self._redis:
+            now = int(time.time())
+            # Fixed window bucket (e.g. 1-minute windows)
+            bucket = now // self._window
+            redis_key = f"atc:rl:{key}:{bucket}"
+            
+            try:
+                pipe = self._redis.pipeline()
+                pipe.incr(redis_key)
+                pipe.expire(redis_key, self._window)
+                count, _ = pipe.execute()
+                
+                if count > self._max:
+                    # Calculate how many seconds until the next bucket starts
+                    retry_after = self._window - (now % self._window)
+                    return False, max(1, retry_after)
+                return True, 0
+            except Exception as e:
+                logger.error("redis_rate_limit_failed error=%s falling_back=in_memory", e)
+                # Fall through to in-memory if Redis fails mid-request
+        
+        # --- IN-MEMORY FALLBACK ---
+        now_mono = time.monotonic()
+        cutoff = now_mono - self._window
 
         if len(self._calls) > self._max_clients:
             keys_to_remove = list(self._calls.keys())[:int(self._max_clients * 0.1)]
@@ -84,17 +133,17 @@ class _SlidingWindowLimiter:
 
         if len(calls) >= self._max:
             oldest = calls[0]
-            retry_after = max(1, int(self._window - (now - oldest)) + 1)
+            retry_after = max(1, int(self._window - (now_mono - oldest)) + 1)
             return False, retry_after
 
-        calls.append(now)
+        calls.append(now_mono)
         return True, 0
 
 
 _limiters = {
-    "free": _SlidingWindowLimiter(max_per_window=settings.tier_free_rate_limit),
-    "pro": _SlidingWindowLimiter(max_per_window=settings.tier_pro_rate_limit),
-    "team": _SlidingWindowLimiter(max_per_window=settings.tier_team_rate_limit),
+    "free": _RateLimiter(max_per_window=settings.tier_free_rate_limit),
+    "pro": _RateLimiter(max_per_window=settings.tier_pro_rate_limit),
+    "team": _RateLimiter(max_per_window=settings.tier_team_rate_limit),
 }
 
 

@@ -2,27 +2,46 @@ import os
 import shutil
 import frontmatter
 import markdown
+from datetime import datetime
 
 POSTS_DIR = "blog_posts"
 OUTPUT_DIR = "landing/blog"
 TEMPLATE_PATH = "blog_template.html"
 INDEX_TEMPLATE_PATH = "blog_index_template.html"
+SITEMAP_PATH = "landing/sitemap.xml"
+
+def generate_sitemap(posts):
+    """Generate a sitemap.xml for SEO."""
+    urls = [
+        "https://agenttrafficcop.com/",
+        "https://agenttrafficcop.com/dashboard.html",
+        "https://agenttrafficcop.com/blog/"
+    ]
+    
+    for p in posts:
+        urls.append(f"https://agenttrafficcop.com/blog/{p['slug']}/")
+
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    for url in urls:
+        xml += f"  <url><loc>{url}</loc></url>\n"
+    xml += '</urlset>\n'
+    
+    with open(SITEMAP_PATH, "w", encoding="utf-8") as f:
+        f.write(xml)
+    print(f"Successfully generated sitemap with {len(urls)} URLs.")
 
 def build():
-    # Clean out the old blog folder first to prevent stale URLs
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR)
-    
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     posts = []
     
-    # Read templates
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         post_template = f.read()
     with open(INDEX_TEMPLATE_PATH, "r", encoding="utf-8") as f:
         index_template = f.read()
 
-    # Parse Markdown files
     for filename in os.listdir(POSTS_DIR):
         if not filename.endswith(".md"):
             continue
@@ -33,20 +52,17 @@ def build():
             
         slug = filename.replace(".md", "")
         
-        # Convert Markdown to HTML (with code block support)
         html_content = markdown.markdown(
             post.content, 
             extensions=['fenced_code', 'codehilite', 'tables']
         )
         
-        # Build the final HTML for the post
         final_html = post_template.replace("{{TITLE}}", post.get("title", "Untitled"))
         final_html = final_html.replace("{{DATE}}", post.get("date", ""))
         final_html = final_html.replace("{{SUMMARY}}", post.get("summary", ""))
         final_html = final_html.replace("{{CANONICAL}}", post.get("canonical", f"https://agenttrafficcop.com/blog/{slug}"))
         final_html = final_html.replace("{{CONTENT}}", html_content)
         
-        # Create a clean URL folder (e.g., /blog/my-post/index.html)
         post_dir = os.path.join(OUTPUT_DIR, slug)
         os.makedirs(post_dir, exist_ok=True)
         with open(os.path.join(post_dir, "index.html"), "w", encoding="utf-8") as f:
@@ -59,10 +75,8 @@ def build():
             "slug": slug
         })
 
-    # Sort posts by date (newest first)
     posts.sort(key=lambda x: x["date"], reverse=True)
 
-    # Generate Blog Index Page
     posts_html = ""
     for p in posts:
         posts_html += f"""
@@ -77,7 +91,6 @@ def build():
     with open(os.path.join(OUTPUT_DIR, "index.html"), "w", encoding="utf-8") as f:
         f.write(final_index)
 
-    # Generate RSS Feed
     rss_items = "".join([f"""
     <item>
         <title>{p['title']}</title>
@@ -98,7 +111,10 @@ def build():
     
     with open(os.path.join(OUTPUT_DIR, "feed.xml"), "w", encoding="utf-8") as f:
         f.write(rss_feed)
-
+        
+    # Generate the sitemap!
+    generate_sitemap(posts)
+    
     print(f"Successfully built {len(posts)} blog posts, index, and RSS feed.")
 
 if __name__ == "__main__":
