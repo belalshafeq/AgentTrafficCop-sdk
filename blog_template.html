@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{TITLE}} | AgentTrafficCop Blog</title>
-    <meta name="description" content="{{SUMMARY}}">
+    <title>{{ title }} | AgentTrafficCop Blog</title>
+    <meta name="description" content="{{ summary }}">
     
     <!-- CRITICAL SEO: Canonical Tag -->
-    <link rel="canonical" href="{{CANONICAL}}">
+    <link rel="canonical" href="{{ canonical }}">
     
     <!-- Syntax Highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -42,11 +42,11 @@
         <a href="/">← Back to AgentTrafficCop</a> | <a href="/blog/">Blog Home</a>
     </div>
     
-    <div class="post-date">{{DATE}}</div>
-    <h1 class="post-title">{{TITLE}}</h1>
+    <div class="post-date">{{ date }}</div>
+    <h1 class="post-title">{{ title }}</h1>
     
     <div class="content">
-        {{CONTENT}}
+        {{ content | safe }}
     </div>
 
     <!-- CTA -->

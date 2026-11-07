@@ -22,7 +22,13 @@
     <a href="/" style="color: var(--fg-1); font-size: 14px;">← Back to Home</a>
     <h1 style="margin-top: 20px;">AgentTrafficCop Blog</h1>
     <div class="posts-list">
-        {{POSTS}}
+        {% for p in posts %}
+        <a href="/blog/{{ p.slug }}" class="post-card">
+            <div class="post-date">{{ p.date }}</div>
+            <h2 class="post-title">{{ p.title }}</h2>
+            <p class="post-summary">{{ p.summary }}</p>
+        </a>
+        {% endfor %}
     </div>
 </body>
 </html>

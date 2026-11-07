@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 
 # --- Environment setup (before any app import) -------------------------------
 os.environ["ATC_API_KEYS"] = "test-key-1,test-key-2"
@@ -66,7 +65,7 @@ def _clear_rate_limiter() -> None:
                 if calls is not None:
                     calls.clear()
                     
-        # 2. Clear the auth brute-force limiter (FIXED)
+        # 2. Clear the auth brute-force limiter
         import app.auth as auth_module
         auth_limiter = getattr(auth_module, "_auth_limiter", None)
         if auth_limiter is not None:
@@ -103,7 +102,6 @@ def _clear_usage_caches() -> None:
 
 
 def _clear_db() -> None:
-    """Wipe the users and api_keys tables between tests so tests are isolated."""
     try:
         with get_db() as conn:
             cursor = conn.cursor()
@@ -120,7 +118,6 @@ def _clear_db() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_state():
-    """Reset all mutable global state before and after every test."""
     _clear_store()
     _clear_metrics()
     _clear_rate_limiter()

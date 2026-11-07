@@ -157,7 +157,15 @@ async def route_message(
     # 3. Circuit breaker (may consume a step before raising).
     started = time.perf_counter()
 
-    digest = payload_hash(message.payload)
+    # Catch deeply nested payload errors before hashing
+    try:
+        digest = payload_hash(message.payload)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "PAYLOAD_TOO_COMPLEX", "message": str(e)}
+        )
+
     snap = session_store.get_or_create(message.session_id)
     
     try:

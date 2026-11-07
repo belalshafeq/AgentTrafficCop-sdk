@@ -2,22 +2,21 @@ import os
 import shutil
 import frontmatter
 import markdown
-from datetime import datetime
+from jinja2 import Environment, FileSystemLoader
 
 POSTS_DIR = "blog_posts"
 OUTPUT_DIR = "landing/blog"
-TEMPLATE_PATH = "blog_template.html"
-INDEX_TEMPLATE_PATH = "blog_index_template.html"
 SITEMAP_PATH = "landing/sitemap.xml"
 
+# Setup Jinja2 environment
+env = Environment(loader=FileSystemLoader("."))
+
 def generate_sitemap(posts):
-    """Generate a sitemap.xml for SEO."""
     urls = [
         "https://agenttrafficcop.com/",
         "https://agenttrafficcop.com/dashboard.html",
         "https://agenttrafficcop.com/blog/"
     ]
-    
     for p in posts:
         urls.append(f"https://agenttrafficcop.com/blog/{p['slug']}/")
 
@@ -37,10 +36,9 @@ def build():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     posts = []
     
-    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        post_template = f.read()
-    with open(INDEX_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        index_template = f.read()
+    # Load Jinja2 templates
+    post_template = env.get_template("blog_template.html")
+    index_template = env.get_template("blog_index_template.html")
 
     for filename in os.listdir(POSTS_DIR):
         if not filename.endswith(".md"):
@@ -57,11 +55,14 @@ def build():
             extensions=['fenced_code', 'codehilite', 'tables']
         )
         
-        final_html = post_template.replace("{{TITLE}}", post.get("title", "Untitled"))
-        final_html = final_html.replace("{{DATE}}", post.get("date", ""))
-        final_html = final_html.replace("{{SUMMARY}}", post.get("summary", ""))
-        final_html = final_html.replace("{{CANONICAL}}", post.get("canonical", f"https://agenttrafficcop.com/blog/{slug}"))
-        final_html = final_html.replace("{{CONTENT}}", html_content)
+        # Render post template
+        final_html = post_template.render(
+            title=post.get("title", "Untitled"),
+            date=post.get("date", ""),
+            summary=post.get("summary", ""),
+            canonical=post.get("canonical", f"https://agenttrafficcop.com/blog/{slug}"),
+            content=html_content
+        )
         
         post_dir = os.path.join(OUTPUT_DIR, slug)
         os.makedirs(post_dir, exist_ok=True)
@@ -77,20 +78,12 @@ def build():
 
     posts.sort(key=lambda x: x["date"], reverse=True)
 
-    posts_html = ""
-    for p in posts:
-        posts_html += f"""
-        <a href="/blog/{p['slug']}" class="post-card">
-            <div class="post-date">{p['date']}</div>
-            <h2 class="post-title">{p['title']}</h2>
-            <p class="post-summary">{p['summary']}</p>
-        </a>
-        """
-        
-    final_index = index_template.replace("{{POSTS}}", posts_html)
+    # Render index template
+    final_index = index_template.render(posts=posts)
     with open(os.path.join(OUTPUT_DIR, "index.html"), "w", encoding="utf-8") as f:
         f.write(final_index)
 
+    # RSS Feed
     rss_items = "".join([f"""
     <item>
         <title>{p['title']}</title>
@@ -112,9 +105,7 @@ def build():
     with open(os.path.join(OUTPUT_DIR, "feed.xml"), "w", encoding="utf-8") as f:
         f.write(rss_feed)
         
-    # Generate the sitemap!
     generate_sitemap(posts)
-    
     print(f"Successfully built {len(posts)} blog posts, index, and RSS feed.")
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .config import settings
 from .db import get_db
-from .middleware import _SlidingWindowLimiter, _client_key
+from .middleware import _RateLimiter, _client_key
 from .schemas import UsageResponse, WebhookUpdate, KeyCreate
 from .usage import (
     snapshot, 
@@ -29,7 +29,7 @@ router = APIRouter()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/login")
 
-_auth_limiter = _SlidingWindowLimiter(
+_auth_limiter = _RateLimiter(
     max_per_window=10,
     window_seconds=60,
     max_clients=10_000,
@@ -204,7 +204,6 @@ async def create_new_key(body: KeyCreate, request: Request, current_user: Annota
 
 @router.delete("/v1/auth/keys/{fingerprint}")
 async def revoke_specific_key(fingerprint: str, request: Request, current_user: Annotated[User, Depends(get_current_user)]):
-    """Revoke a specific API key by fingerprint."""
     _enforce_auth_rate_limit(request)
     with get_db() as conn:
         cursor = conn.cursor()
