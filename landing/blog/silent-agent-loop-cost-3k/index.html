@@ -65,6 +65,7 @@
 <h2>The Naive Fix (And Why It Fails)</h2>
 <p>When I realized what was happening, my first instinct was to write a manual loop counter.</p>
 <p>I wrote something like this:</p>
+<p>```python</p>
 <h1>The Naive Counter</h1>
 <p>execution_count = 0</p>
 <p>def guarded_node(state):
@@ -77,9 +78,9 @@ return agent.run(state)
 </code></pre></div>
 
 <p>This worked for a single-agent setup. But it fell apart the moment I scaled to a multi-agent swarm.</p>
-<p>It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the A -&gt; B -&gt; A pattern, just the total number of executions.</p>
-<p>State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.</p>
-<p>It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.</p>
+<p>•  It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the A -&gt; B -&gt; A pattern, just the total number of executions.</p>
+<p>•  State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.</p>
+<p>•  It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.</p>
 <p>The Robust Fix: A Runtime Circuit Breaker
 To actually stop runaway spend, you need a deterministic check that happens at the handoff layer, before the next API token is generated.</p>
 <p>You need to hash the payload.</p>
@@ -92,10 +93,13 @@ To actually stop runaway spend, you need a deterministic check that happens at t
 After spending a weekend writing custom hashing logic and state trackers for my own projects, I realized how tedious this was.</p>
 <p>So we built AgentTrafficCop — a lightweight runtime middleware that sits between your agents and acts as a circuit breaker.</p>
 <p>We designed it so you don't have to rewrite your graph. If you are using LangGraph, integration is literally one line of code:</p>
-<p>from agenttrafficcop import guarded_node</p>
-<h1>Wrap your existing node</h1>
-<p>guarded_node(my_agent_node, guard=guard)
-Once installed, AgentTrafficCop intercepts every handoff, hashes the payload, and kills the session if it detects a loop.</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">agenttrafficcop</span><span class="w"> </span><span class="kn">import</span> <span class="n">guarded_node</span>
+
+<span class="c1"># Wrap your existing node</span>
+<span class="n">guarded_node</span><span class="p">(</span><span class="n">my_agent_node</span><span class="p">,</span> <span class="n">guard</span><span class="o">=</span><span class="n">guard</span><span class="p">)</span>
+</code></pre></div>
+
+<p>Once installed, AgentTrafficCop intercepts every handoff, hashes the payload, and kills the session if it detects a loop.</p>
 <p>But killing the process is only half the battle. If a loop happens, you need to know about it.</p>
 <p>When the middleware trips the circuit breaker, it instantly fires a webhook to your Slack or Discord, so your team knows exactly which session was killed before the bill spikes.</p>
 <p>We also built a dashboard that tracks Money Saved based on the number of loops prevented, along with a 7-day view of approved vs. rejected handoffs.</p>
@@ -103,9 +107,9 @@ Once installed, AgentTrafficCop intercepts every handoff, hashes the payload, an
 In deterministic software, a 200 OK means everything is working. In probabilistic AI systems, a 200 OK just means the model successfully generated text. It doesn't mean the text was useful, and it certainly doesn't mean you aren't stuck in a loop.</p>
 <p>Stop relying on HTTP status codes to monitor your agent health. Monitor the state.</p>
 <p>If you want to stop writing custom loop counters and protect your API budget, AgentTrafficCop is live. The free tier protects up to 5 agents and 10,000 messages per month (no credit card required).</p>
-<p>You can install the SDK directly from PyPI:</p>
-<p>pip install agenttrafficcop
-Stop letting your agents burn money in a while(True) loop. Get your free API key at agenttrafficcop.com.</p>
+<p>You can install the SDK directly from PyPI:
+    pip install agenttrafficcop</p>
+<p>Stop letting your agents burn money in a while(True) loop. Get your free API key at agenttrafficcop.com.</p>
     </div>
 
     <!-- CTA -->

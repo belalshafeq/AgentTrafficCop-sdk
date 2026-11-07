@@ -38,6 +38,7 @@ When I realized what was happening, my first instinct was to write a manual loop
 
 I wrote something like this:
 
+```python
 # The Naive Counter
 execution_count = 0
 
@@ -49,13 +50,15 @@ def guarded_node(state):
         raise Exception("Loop detected!")
         
     return agent.run(state)
+
 This worked for a single-agent setup. But it fell apart the moment I scaled to a multi-agent swarm.
 
-It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the A -> B -> A pattern, just the total number of executions.
+  •  It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the A -> B -> A pattern, just the total number of executions.
 
-State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.
+  •  State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.
 
-It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.
+  •  It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.
+
 
 The Robust Fix: A Runtime Circuit Breaker
 To actually stop runaway spend, you need a deterministic check that happens at the handoff layer, before the next API token is generated.
@@ -72,6 +75,7 @@ If hash_1 == hash_3 and hash_2 is different, you have a Cyclic Loop.
 
 Instead of letting the agents keep talking, you throw a 422 Unprocessable Entity error back to the orchestrator, forcibly halting the session.
 
+
 Enter AgentTrafficCop
 After spending a weekend writing custom hashing logic and state trackers for my own projects, I realized how tedious this was.
 
@@ -79,10 +83,11 @@ So we built AgentTrafficCop — a lightweight runtime middleware that sits betwe
 
 We designed it so you don't have to rewrite your graph. If you are using LangGraph, integration is literally one line of code:
 
-from agenttrafficcop import guarded_node
+    from agenttrafficcop import guarded_node
 
-# Wrap your existing node
-guarded_node(my_agent_node, guard=guard)
+    # Wrap your existing node
+    guarded_node(my_agent_node, guard=guard)
+
 Once installed, AgentTrafficCop intercepts every handoff, hashes the payload, and kills the session if it detects a loop.
 
 But killing the process is only half the battle. If a loop happens, you need to know about it.
@@ -90,6 +95,7 @@ But killing the process is only half the battle. If a loop happens, you need to 
 When the middleware trips the circuit breaker, it instantly fires a webhook to your Slack or Discord, so your team knows exactly which session was killed before the bill spikes.
 
 We also built a dashboard that tracks Money Saved based on the number of loops prevented, along with a 7-day view of approved vs. rejected handoffs.
+
 
 The Lesson: Monitor State, Not Uptime
 In deterministic software, a 200 OK means everything is working. In probabilistic AI systems, a 200 OK just means the model successfully generated text. It doesn't mean the text was useful, and it certainly doesn't mean you aren't stuck in a loop.
@@ -99,6 +105,6 @@ Stop relying on HTTP status codes to monitor your agent health. Monitor the stat
 If you want to stop writing custom loop counters and protect your API budget, AgentTrafficCop is live. The free tier protects up to 5 agents and 10,000 messages per month (no credit card required).
 
 You can install the SDK directly from PyPI:
+    pip install agenttrafficcop
 
-pip install agenttrafficcop
 Stop letting your agents burn money in a while(True) loop. Get your free API key at agenttrafficcop.com.
