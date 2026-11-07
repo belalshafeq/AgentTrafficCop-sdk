@@ -46,51 +46,43 @@
     <h1 class="post-title">How a Silent Agent Loop Cost Me $3k in API Bills (And How I Fixed It)</h1>
     
     <div class="content">
-        <p>Last year, I woke up to a <strong>$3,000 OpenAI bill</strong>.</p>
-<p>I panicked. I assumed my API key had been leaked, or I was being hit by a massive DDoS attack. I pulled up the logs expecting to find a catastrophic crash or a massive spike in user traffic.</p>
-<p>Instead, I found <code>200 OKs</code>.</p>
-<p>My multi-agent system had 100% uptime. The server was healthy. The database was fine. But Agent A and Agent B were stuck in a polite ping-pong loop. Agent A asked for a review. Agent B provided a review. Agent A asked for a review again.</p>
-<p>They had been talking to each other in circles for 8 hours straight. The framework thought everything was fine, and my API budget was draining in the background.</p>
-<p>This is the silent killer of multi-agent systems. Here is why it happens, why your standard retry logic won't save you, and how to build a runtime circuit breaker to stop it.</p>
-<h2>The Technical Diagnosis: Why Retries Don't Work</h2>
+        <p>The Technical Diagnosis: Why Retries Don't Work</p>
 <p>If you are using frameworks like LangGraph, CrewAI, or AutoGen, you probably have <code>max_retries</code> configured. I did too.</p>
 <p>But a retry limit only triggers when an agent throws an error (like a 500, a timeout, or a malformed JSON response).</p>
-<p>An agent loop isn't an error. The LLM is successfully generating tokens. It is returning valid, perfectly formatted Pydantic output. The framework sees a successful handoff. The HTTP status is <code>200 OK</code>.</p>
+<p>An agent loop isn't an error. The LLM is successfully generating tokens. It is returning valid, perfectly formatted Pydantic output. The framework sees a successful handoff. The HTTP status is <code>bash 200 OK</code>.</p>
 <p>There are two patterns that will drain your budget:</p>
-<ol>
-<li><strong>The Repeated Loop:</strong> A -&gt; A -&gt; A -&gt; A. The model gets stuck on a single thought and repeats it indefinitely.</li>
-<li><strong>The Cyclic Loop:</strong> A -&gt; B -&gt; A -&gt; B. Two agents get stuck validating each other's work forever.</li>
-</ol>
+<p>The Repeated Loop: <code>A -&gt; A -&gt; A -&gt; A</code>. The model gets stuck on a single thought and repeats it indefinitely.</p>
+<p>The Cyclic Loop: <code>A -&gt; B -&gt; A -&gt; B</code>. Two agents get stuck validating each other's work forever.</p>
 <p>If you are only monitoring HTTP codes or infrastructure uptime, you will never catch this. The agents are healthy, they are just burning your runway.</p>
-<h2>The Naive Fix (And Why It Fails)</h2>
+<p>The Naive Fix (And Why It Fails)</p>
 <p>When I realized what was happening, my first instinct was to write a manual loop counter.</p>
 <p>I wrote something like this:</p>
-<p>```python</p>
-<h1>The Naive Counter</h1>
-<p>execution_count = 0</p>
-<p>def guarded_node(state):
-    global execution_count
-    execution_count += 1</p>
-<div class="codehilite"><pre><span></span><code>if execution_count &gt; 3:
-    raise Exception("Loop detected!")
+<div class="codehilite"><pre><span></span><code><span class="c1"># The Naive Counter</span>
+<span class="n">execution_count</span> <span class="o">=</span> <span class="mi">0</span>
 
-return agent.run(state)
+<span class="k">def</span><span class="w"> </span><span class="nf">guarded_node</span><span class="p">(</span><span class="n">state</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">execution_count</span>
+    <span class="n">execution_count</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">execution_count</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s2">"Loop detected!"</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">agent</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">state</span><span class="p">)</span>
 </code></pre></div>
 
 <p>This worked for a single-agent setup. But it fell apart the moment I scaled to a multi-agent swarm.</p>
-<p>•  It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the A -&gt; B -&gt; A pattern, just the total number of executions.</p>
-<p>•  State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.</p>
-<p>•  It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.</p>
-<p>The Robust Fix: A Runtime Circuit Breaker
-To actually stop runaway spend, you need a deterministic check that happens at the handoff layer, before the next API token is generated.</p>
+<p>It doesn't catch cyclic loops. If Agent A calls Agent B, the counter keeps going up, but it's not catching the <code>A -&gt; B -&gt; A</code> pattern, just the total number of executions.</p>
+<p>State resets break it. If an agent crashes and the graph resumes, the Python counter resets to zero, and the loop starts over.</p>
+<p>It's a nightmare to maintain. If you have 10 nodes, you have to manually pass and manage this counter across every single edge in your graph.</p>
+<h2>The Robust Fix: A Runtime Circuit Breaker</h2>
+<p>To actually stop runaway spend, you need a deterministic check that happens at the handoff layer, before the next API token is generated.</p>
 <p>You need to hash the payload.</p>
-<p>Every time an agent prepares to pass a message to another agent, you intercept that payload, serialize it, and run it through a SHA-256 hash.</p>
+<p>Every time an agent prepares to pass a message to another agent, you intercept that payload, serialize it, and run it through a <code>SHA-256</code> hash.</p>
 <p>If you keep a sliding window of the last 3 hashes, you can instantly detect loops:</p>
-<p>If hash_1 == hash_2 == hash_3, you have a Repeated Loop.</p>
-<p>If hash_1 == hash_3 and hash_2 is different, you have a Cyclic Loop.</p>
-<p>Instead of letting the agents keep talking, you throw a 422 Unprocessable Entity error back to the orchestrator, forcibly halting the session.</p>
-<p>Enter AgentTrafficCop
-After spending a weekend writing custom hashing logic and state trackers for my own projects, I realized how tedious this was.</p>
+<p>If <code>hash_1 == hash_2 == hash_3</code>, you have a Repeated Loop.</p>
+<p>If <code>hash_1 == hash_3 and hash_2</code> is different, you have a Cyclic Loop.</p>
+<p>Instead of letting the agents keep talking, you throw a <code>422 Unprocessable Entity</code> error back to the orchestrator, forcibly halting the session.</p>
+<h2>Enter AgentTrafficCop</h2>
+<p>After spending a weekend writing custom hashing logic and state trackers for my own projects, I realized how tedious this was.</p>
 <p>So we built AgentTrafficCop — a lightweight runtime middleware that sits between your agents and acts as a circuit breaker.</p>
 <p>We designed it so you don't have to rewrite your graph. If you are using LangGraph, integration is literally one line of code:</p>
 <div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">agenttrafficcop</span><span class="w"> </span><span class="kn">import</span> <span class="n">guarded_node</span>
@@ -103,13 +95,15 @@ After spending a weekend writing custom hashing logic and state trackers for my 
 <p>But killing the process is only half the battle. If a loop happens, you need to know about it.</p>
 <p>When the middleware trips the circuit breaker, it instantly fires a webhook to your Slack or Discord, so your team knows exactly which session was killed before the bill spikes.</p>
 <p>We also built a dashboard that tracks Money Saved based on the number of loops prevented, along with a 7-day view of approved vs. rejected handoffs.</p>
-<p>The Lesson: Monitor State, Not Uptime
-In deterministic software, a 200 OK means everything is working. In probabilistic AI systems, a 200 OK just means the model successfully generated text. It doesn't mean the text was useful, and it certainly doesn't mean you aren't stuck in a loop.</p>
+<h2>The Lesson: Monitor State, Not Uptime</h2>
+<p>In deterministic software, a <code>bash 200 OK</code> means everything is working. In probabilistic AI systems, a <code>bash 200 OK</code> just means the model successfully generated text. It doesn't mean the text was useful, and it certainly doesn't mean you aren't stuck in a loop.</p>
 <p>Stop relying on HTTP status codes to monitor your agent health. Monitor the state.</p>
 <p>If you want to stop writing custom loop counters and protect your API budget, AgentTrafficCop is live. The free tier protects up to 5 agents and 10,000 messages per month (no credit card required).</p>
-<p>You can install the SDK directly from PyPI:
-    pip install agenttrafficcop</p>
-<p>Stop letting your agents burn money in a while(True) loop. Get your free API key at agenttrafficcop.com.</p>
+<p>You can install the SDK directly from PyPI:</p>
+<div class="codehilite"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>agenttrafficcop
+</code></pre></div>
+
+<p>Stop letting your agents burn money in a <code>while(True)</code> loop. Get your free API key at agenttrafficcop.com.</p>
     </div>
 
     <!-- CTA -->
