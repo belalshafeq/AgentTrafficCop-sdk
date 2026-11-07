@@ -7,5 +7,5 @@ If you discover a security vulnerability in AgentTrafficCop, please do not open 
 - **API Keys:** Raw keys are never stored. We only store SHA-256 hashes.
 - **Passwords:** Hashed using Bcrypt with a strict 72-byte limit.
 - **Webhooks:** Billing webhooks are verified using HMAC signatures.
-- **Rate Limiting:** Protected against memory exhaustion via an LRU-capped sliding window.
+- **Rate Limiting:** Global Redis-backed rate limiting to share quotas across all replicas (with an in-memory fallback for local dev).
 - **CORS:** Strictly configured to only allow trusted origins in production.
