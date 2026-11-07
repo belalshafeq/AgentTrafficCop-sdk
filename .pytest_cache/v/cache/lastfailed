@@ -1,4 +1,0 @@
-{
-  "tests/test_circuit_breaker.py::TestRepeatedPayloads::test_diagnostic_includes_step": true,
-  "tests/test_middleware.py::TestRateLimiterInstalled::test_route_returns_429_field_in_openapi": true
-}
