@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} | AgentTrafficCop Blog</title>
+    <meta name="description" content="{{ summary }}">
+    
+    <!-- CRITICAL SEO: Canonical Tag -->
+    <link rel="canonical" href="{{ canonical }}">
+    
+    <!-- Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+
+    <style>
+        :root { --bg: #000000; --bg-1: #0a0a0a; --fg: #ededed; --fg-1: #a1a1a1; --line: #1f1f1f; --accent: #10b981; }
+        body { background: var(--bg); color: var(--fg); font-family: 'Geist', -apple-system, system-ui, sans-serif; line-height: 1.7; padding: 40px 20px; max-width: 800px; margin: 0 auto; }
+        a { color: var(--accent); text-decoration: none; }
+        .header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 40px; }
+        .post-date { color: var(--fg-1); font-size: 14px; margin-bottom: 10px; font-family: monospace; }
+        .post-title { font-size: 36px; margin-bottom: 20px; letter-spacing: -0.03em; line-height: 1.2; }
+        .content h2 { margin-top: 40px; margin-bottom: 16px; }
+        .content h3 { margin-top: 30px; margin-bottom: 16px; }
+        .content p { margin-bottom: 20px; color: var(--fg-1); }
+        .content ul, .content ol { margin-bottom: 20px; color: var(--fg-1); padding-left: 20px; }
+        .content li { margin-bottom: 8px; }
+        .content pre { background: var(--bg-1) !important; padding: 16px; border-radius: 8px; border: 1px solid var(--line); overflow-x: auto; margin-bottom: 24px; }
+        .content code { font-family: 'Geist Mono', monospace; font-size: 14px; }
+        .content p code { background: var(--bg-1); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); }
+        .content blockquote { border-left: 4px solid var(--accent); padding-left: 16px; color: var(--fg-1); font-style: italic; margin-bottom: 24px; }
+        
+        /* CTA Box */
+        .cta-box { background: var(--bg-1); border: 1px solid var(--line); padding: 32px; border-radius: 12px; text-align: center; margin-top: 60px; }
+        .cta-btn { display: inline-block; background: var(--fg); color: var(--bg); padding: 12px 24px; border-radius: 6px; font-weight: bold; margin-top: 16px; transition: background 0.2s; }
+        .cta-btn:hover { background: var(--accent); color: var(--bg); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/">← Back to AgentTrafficCop</a> | <a href="/blog/">Blog Home</a>
+    </div>
+    
+    <div class="post-date">{{ date }}</div>
+    <h1 class="post-title">{{ title }}</h1>
+    
+    <div class="content">
+        {{ content | safe }}
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-box">
+        <h2>Stop your agents from burning your API budget.</h2>
+        <p style="color: var(--fg-1);">Get a free API key in 60 seconds. No credit card required.</p>
+        <a href="/dashboard.html" class="cta-btn">Get Your Free API Key →</a>
+    </div>
+</body>
+</html>

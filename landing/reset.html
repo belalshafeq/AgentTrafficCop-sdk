@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reset Password | AgentTrafficCop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg: #000000; --bg-1: #0a0a0a; --bg-2: #111111; --fg: #ededed; --fg-1: #a1a1a1; --fg-2: #666666; --line: #1f1f1f; --line-2: #2a2a2a; --accent: #10b981; --error: #f87171; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--fg); font-family: 'Geist', system-ui, sans-serif; font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+    a { color: inherit; text-decoration: none; }
+    header { border-bottom: 1px solid var(--line); padding: 16px 32px; display: flex; align-items: center; gap: 10px; font-weight: 500; }
+    .brand-mark { width: 20px; height: 20px; border: 1px solid var(--line-2); border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+    .brand-mark::after { content: ''; width: 6px; height: 6px; background: var(--fg); border-radius: 50%; }
+    .main-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+    .card { background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 32px; width: 100%; max-width: 480px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; color: var(--fg-1); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Geist Mono', monospace; }
+    .form-group input { width: 100%; background: var(--bg); border: 1px solid var(--line-2); color: var(--fg); padding: 12px; border-radius: 6px; font-family: 'Geist', sans-serif; outline: none; transition: border-color 0.2s; }
+    .form-group input:focus { border-color: var(--fg-1); }
+    .btn-primary { width: 100%; background: var(--fg); color: var(--bg); border: 1px solid var(--fg); padding: 12px; border-radius: 6px; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-top: 8px; }
+    .btn-primary:hover { background: transparent; color: var(--fg); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error-msg { color: var(--error); font-size: 13px; margin-top: 12px; text-align: center; min-height: 20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="brand-mark"></span>
+    <span>AgentTrafficCop</span>
+  </header>
+
+  <div class="main-container">
+    <div class="card">
+      <h2 style="font-size: 20px; margin-bottom: 8px;">Set a new password</h2>
+      <p style="color: var(--fg-1); margin-bottom: 24px; font-size: 14px;">Enter your new password below.</p>
+      
+      <form id="reset-form">
+        <div class="form-group">
+          <label>New Password</label>
+          <input type="password" id="password" required minlength="8" maxlength="72" placeholder="••••••••" />
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="confirm-password" required minlength="8" maxlength="72" placeholder="••••••••" />
+        </div>
+        <button type="submit" class="btn-primary" id="submit-btn">Update Password</button>
+      </form>
+      <p id="error-msg" class="error-msg"></p>
+    </div>
+  </div>
+
+  <script>
+    const hostname = window.location.hostname;
+    let API_BASE = (hostname === 'localhost' || hostname === '127.0.0.1') ? 'http://localhost:8000' : 'https://api.agenttrafficcop.com';
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    if (!token) {
+      document.getElementById('error-msg').textContent = "Invalid or missing reset token. Please request a new link.";
+      document.getElementById('submit-btn').disabled = true;
+    }
+
+    document.getElementById('reset-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const password = document.getElementById('password').value;
+      const confirm = document.getElementById('confirm-password').value;
+      const btn = document.getElementById('submit-btn');
+      const errorEl = document.getElementById('error-msg');
+
+      if (password !== confirm) {
+        errorEl.textContent = "Passwords do not match.";
+        return;
+      }
+
+      const originalText = btn.textContent;
+      btn.textContent = "Updating...";
+      btn.disabled = true;
+      errorEl.textContent = '';
+
+      try {
+        const res = await fetch(`${API_BASE}/v1/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token, new_password: password })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.detail || "Failed to reset password.");
+        }
+        
+        // Success!
+        errorEl.style.color = 'var(--accent)';
+        errorEl.textContent = "Password updated! Redirecting to login...";
+        
+        setTimeout(() => {
+          window.location.href = 'dashboard.html';
+        }, 2000);
+
+      } catch (err) {
+        errorEl.style.color = 'var(--error)';
+        errorEl.textContent = err.message;
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

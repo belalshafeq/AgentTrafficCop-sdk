@@ -1,0 +1,3 @@
+{
+  "tests/test_langgraph.py::TestAsyncNode::test_node_skipped_when_raise_on_trip_false": true
+}
