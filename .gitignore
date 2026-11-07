@@ -2,14 +2,33 @@
 # AgentTrafficCop — .gitignore
 # ============================================================
 
+# --- PRIVATE BACKEND (DO NOT COMMIT) ---
+# These files are for your hosted SaaS only. 
+# They must never be in the public SDK repo.
+app/
+tests/
+landing/
+blog_posts/
+.env.example
+Dockerfile
+docker-compose*.yml
+build_blog.py
+blog_template.html
+blog_index_template.html
+
 # --- Secrets & environment ---
 .env
 .env.*
-!.env.example
 *.key
 *.pem
 secrets/
 credentials/
+
+# --- Databases (CRITICAL) ---
+agenttrafficcop.db
+*.db
+*.sqlite
+*.sqlite3
 
 # --- Python ---
 __pycache__/
@@ -18,22 +37,10 @@ __pycache__/
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # --- Virtual environments ---
 .venv/
@@ -48,17 +55,12 @@ env/
 .coverage.*
 htmlcov/
 .tox/
-.nox/
 coverage.xml
-*.cover
-.hypothesis/
 
 # --- Type checkers / linters ---
 .mypy_cache/
 .dmypy.json
-dmypy.json
 .ruff_cache/
-.pytype/
 
 # --- IDE / editors ---
 .vscode/
@@ -72,17 +74,6 @@ Thumbs.db
 # --- Logs & runtime ---
 *.log
 logs/
-*.pid
-*.seed
-*.pid.lock
-
-# --- Build artifacts ---
-*.manifest
-*.spec
-pip-log.txt
-pip-delete-this-directory.txt
-
-# AgentTrafficCop runtime files
 audit.log
 audit.log.*
 *.audit.log
