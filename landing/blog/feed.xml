@@ -7,7 +7,7 @@
         
     <item>
         <title>How a Silent Agent Loop Cost Me $3k in API Bills (And How I Fixed It)</title>
-        <link>https://agenttrafficcop.com/blog/my-first-post</link>
+        <link>https://agenttrafficcop.com/blog/silent-agent-loop-cost-3k</link>
         <description>My multi-agent system had 100% uptime. But Agent A and Agent B were stuck in a ping-pong loop burning $3k. Here is how I fixed it.</description>
         <pubDate>2026-11-06</pubDate>
     </item>
