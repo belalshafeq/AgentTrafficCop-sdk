@@ -15,7 +15,7 @@ Sits between communicating AI agents, validates every handoff against a strict s
 ## What It Does
 
 - **Schema shield** — every message validated against a strict Pydantic v2 contract.
-- **Smart loop detection — Canonical JSON serialization + SHA-256 hashing catches repeated payloads and A↔B ping-pong cycles deterministically.
+- **Smart loop detection** — Canonical JSON serialization + SHA-256 hashing catches repeated payloads and A↔B ping-pong cycles deterministically.
 - **Circuit breaker** — step limits, consecutive-repeat limits, cycle limits, and optional dollar/time budgets.
 - **Global Rate Limiting** — Redis-backed rate limits across all server instances (falls back to in-memory for local dev).
 - **Structured errors** — HTTP 422 with stable error codes and diagnostics.
@@ -240,7 +240,7 @@ the counter (trips, schema failures, auth errors, and rate limits are free).
 - **In-memory backend is single-process.** Without Redis, sessions and usage counters do not survive restarts.
 - **Exact-match loop detection.** Payloads are compared by exact SHA-256. Semantically equivalent but differently-worded loops (e.g., "fix bug" vs "resolve issue") are not caught. Embeddings are a future feature.
 - **No multi-tenancy.** One API key list per deployment; sessions are global. Workspaces are a future feature.
-- **SQLite by default.** Fine for <200 req/s single-process. Postgres support is on the roadmap for multi-worker deployments.
+- **SQLite by default.** Fine for up to ~1,000 req/s single-process (thanks to auth caching). Postgres support is on the roadmap for multi-worker deployments.
 
 ## License
 MIT.
