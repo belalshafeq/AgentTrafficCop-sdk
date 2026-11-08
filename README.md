@@ -15,7 +15,7 @@ Sits between communicating AI agents, validates every handoff against a strict s
 ## What It Does
 
 - **Schema shield** — every message validated against a strict Pydantic v2 contract.
-- **Smart loop detection** — Structural normalization strips volatile fields (IDs, timestamps) before SHA-256 hashing, catching real-world loops without false negatives.
+- **Smart loop detection — Canonical JSON serialization + SHA-256 hashing catches repeated payloads and A↔B ping-pong cycles deterministically.
 - **Circuit breaker** — step limits, consecutive-repeat limits, cycle limits, and optional dollar/time budgets.
 - **Global Rate Limiting** — Redis-backed rate limits across all server instances (falls back to in-memory for local dev).
 - **Structured errors** — HTTP 422 with stable error codes and diagnostics.
@@ -27,7 +27,7 @@ Sits between communicating AI agents, validates every handoff against a strict s
 - **Prometheus metrics** — `/metrics` endpoint, zero external dependencies.
 - **Audit log** — durable JSON Lines record of every governance event.
 - **LangGraph integration** — wrap any node in one line.
-- **220+ automated tests** — the whole stack, verified in CI on every push.
+- **240+ automated tests** — the whole stack, verified in CI on every push.
 
 ## See It In Action
 
@@ -175,7 +175,7 @@ Fourth call returns HTTP 422:
 | `GET` | `/v1/sessions/{id}` | Admin | Inspect one session |
 | `DELETE` | `/v1/sessions/{id}` | Admin | Reset one session |
 | `POST` | `/v1/admin/cleanup` | Admin | Expire idle sessions in bulk |
-| `GET` | `/metrics` | None | Prometheus metrics endpoint |
+| `GET` | `/metrics` | Bearer | Prometheus metrics endpoint |
 
 Admin endpoints require a key listed in `ATC_ADMIN_API_KEYS`. If that
 variable is empty, admin access falls back to the `team` tier.
@@ -229,7 +229,7 @@ the counter (trips, schema failures, auth errors, and rate limits are free).
 - **Auth endpoints are rate-limited** — 10 requests/minute per IP.
 - **Global rate limiting** — Redis-backed to share quotas across all replicas.
 - **No secrets in logs** — only truncated SHA-256 fingerprints for correlation.
-- **Payload normalization** — strips volatile IDs/timestamps before hashing.
+- **Canonical JSON** — hashes are deterministic regardless of key order.
 - **No `pickle` / `eval` / `exec`** — hashing uses canonical JSON.
 - **Bounded memory** — sessions and hash histories are capped.
 - **Body size limit** — enforced on actual bytes, not just `Content-Length`.
@@ -238,10 +238,9 @@ the counter (trips, schema failures, auth errors, and rate limits are free).
 ## Limitations (Honest list)
 
 - **In-memory backend is single-process.** Without Redis, sessions and usage counters do not survive restarts.
-- **Structural normalization only.** It strips common volatile keys (IDs, timestamps), but semantically-equivalent-but-differently-worded loops (e.g., "fix bug" vs "resolve issue") are not caught. Embeddings are a future feature.
-- **No multi-tenancy.** One API key list for all users; sessions are global. This is a future feature.
-- **No self-serve tier changes.** Upgrades are manual (edit `.env` and restart). Stripe/Lemon Squeezy integration is a future feature.
-- **No JWT revocation.** A stolen dashboard token is valid until expiry (7 days by default). Logout and revocation are future features.
+- **Exact-match loop detection.** Payloads are compared by exact SHA-256. Semantically equivalent but differently-worded loops (e.g., "fix bug" vs "resolve issue") are not caught. Embeddings are a future feature.
+- **No multi-tenancy.** One API key list per deployment; sessions are global. Workspaces are a future feature.
+- **SQLite by default.** Fine for <200 req/s single-process. Postgres support is on the roadmap for multi-worker deployments.
 
 ## License
 MIT.
