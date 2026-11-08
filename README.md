@@ -191,6 +191,30 @@ graph.add_node(
     ),
 )
 ```
+## Synchronous Frameworks (CrewAI, AutoGen)
+If you are using a synchronous framework like CrewAI or AutoGen, use the ```GuardSync``` client. It doesn't require ```async``` or ```await```.
+
+```python
+from agenttrafficcop import GuardSync, LoopDetected
+
+guard = GuardSync(
+    url="https://api.agenttrafficcop.com",
+    api_key="your-api-key-here"
+)
+
+try:
+    result = guard.check(
+        session_id="task-1",
+        sender="researcher",
+        recipient="writer",
+        payload={"topic": "AI safety"}
+    )
+    print("Approved at step", result.step)
+except LoopDetected as e:
+    print("Loop caught:", e.error_code)
+finally:
+    guard.close()
+```
 ## Tiers & Usage
 
 Every API key is assigned a tier, and every tier has a monthly message
