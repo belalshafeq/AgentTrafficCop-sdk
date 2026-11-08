@@ -1,46 +1,31 @@
-# AgentTrafficCop
+# AgentTrafficCop SDK
 
 [![PyPI version](https://img.shields.io/pypi/v/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
-[![CI](https://github.com/belalshafeq/Agent_Cop/actions/workflows/ci.yml/badge.svg)](https://github.com/belalshafeq/Agent_Cop/actions/workflows/ci.yml)
+[![CI](https://github.com/belalshafeq/AgentTrafficCop-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/belalshafeq/AgentTrafficCop-sdk/actions/workflows/ci.yml)
 
-A zero-config **runtime circuit breaker** for multi-agent systems.
+The official Python SDK for **AgentTrafficCop** — a runtime circuit breaker for multi-agent systems.
 
 Sits between communicating AI agents, validates every handoff against a strict schema, fingerprints the payload with SHA-256, and trips a circuit breaker before an infinite loop burns your budget.
 
-> **Not** an LLM router, **not** an observability platform, **not** a
-> prompt manager. One job: stop runaway agent loops before they burn
-> your budget.
+> **Not** an LLM router, **not** an observability platform, **not** a prompt manager. One job: stop runaway agent loops before they burn your budget.
 
 ## What It Does
 
 - **Schema shield** — every message validated against a strict Pydantic v2 contract.
 - **Smart loop detection** — Canonical JSON serialization + SHA-256 hashing catches repeated payloads and A↔B ping-pong cycles deterministically.
-- **Circuit breaker** — step limits, consecutive-repeat limits, cycle limits, and optional dollar/time budgets.
-- **Global Rate Limiting** — Redis-backed rate limits across all server instances (falls back to in-memory for local dev).
+- **Circuit breaker** — step limits, consecutive-repeat limits, cycle limits.
+- **Global Rate Limiting** — Redis-backed rate limits across all server instances.
 - **Structured errors** — HTTP 422 with stable error codes and diagnostics.
-- **Bearer authentication** — constant-time API key comparison.
-- **Email Verification & Password Reset** — Built-in Resend integration for secure user onboarding.
 - **Discord / Slack Webhooks** — Instantly alerts your team when a loop is halted.
-- **Session Inspector** — Beautiful dashboard UI to view recently tripped loops and approved runs.
-- **Bounded memory** — LRU-capped sessions, fixed-length hash history.
-- **Prometheus metrics** — `/metrics` endpoint, zero external dependencies.
-- **Audit log** — durable JSON Lines record of every governance event.
+- **Session Inspector** — Beautiful dashboard UI to view recently tripped loops.
 - **LangGraph integration** — wrap any node in one line.
 - **240+ automated tests** — the whole stack, verified in CI on every push.
 
 ## See It In Action
 
-Two agents get stuck in a loop. Without AgentTrafficCop, nothing stops them.
-With it, the breaker trips in seconds.
+Two agents get stuck in a loop. Without AgentTrafficCop, nothing stops them. With it, the breaker trips in seconds.
 
-```text
-# Terminal 1: start the middleware
-python run.py
-
-# Terminal 2: run the demo
-python demo.py
-```
 Output:
 
 ```text
@@ -61,7 +46,7 @@ Two agents loop. Nothing stops them. Watch the cost.
 ════════════════════════════════════════════════════════════════
 RUN 2: WITH AgentTrafficCop
 ════════════════════════════════════════════════════════════════
-Same agents. Every message goes through the cop at http://localhost:8000.
+Same agents. Every message goes through the cop at https://api.agenttrafficcop.com.
 
   Coder    → Reviewer : {...}  [APPROVED step=1]
   Reviewer → Coder    : {...}  [APPROVED step=2]
@@ -85,22 +70,24 @@ Same agents. Every message goes through the cop at http://localhost:8000.
 
 Demo complete.
 ```
+##  Quick Start
 
-## Install & Run
+1) Claim a free API key at `agenttrafficcop.com`.
+2) Install the SDK:
 ```bash
-pip install -r requirements.txt
-cp .env.example .env          # then edit .env and set ATC_API_KEYS
-python run.py
+ pip install agenttrafficcop ```
 ```
-Server: `http://localhost:8000` Docs: `http://localhost:8000/docs`
+3) Initialize the Guard client:
+```python
 
-## Try It
-First, generate an API key and put it in `.env`:
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+from agenttrafficcop import Guard, LoopDetected
+
+guard = Guard(
+    url="https://api.agenttrafficcop.com",
+    api_key="your-api-key-here"
+)
 ```
-Set `ATC_API_KEYS=<the-key>` in `.env`, then restart the server.
- 
+
 ## Health check (no auth)
 ```bash
 curl http://localhost:8000/health
