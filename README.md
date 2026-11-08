@@ -75,7 +75,7 @@ Demo complete.
 1) Claim a free API key at `agenttrafficcop.com`.
 2) Install the SDK:
 ```bash
- pip install agenttrafficcop ```
+ pip install agenttrafficcop
 ```
 3) Initialize the Guard client:
 ```python
