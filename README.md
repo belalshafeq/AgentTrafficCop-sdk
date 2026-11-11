@@ -13,14 +13,48 @@ Sits between communicating AI agents, validates every handoff against a strict s
 ## What It Does
 
 - **Schema shield** — every message validated against a strict Pydantic v2 contract.
-- **Smart loop detection** — Canonical JSON serialization + SHA-256 hashing catches repeated payloads and A↔B ping-pong cycles deterministically.
+- **Deterministic loop detection** — Canonical JSON serialization + SHA-256 hashing catches repeated payloads and A↔B ping-pong cycles.
+- **Quiet Loop Detection (NEW)** — Hashes your `tools` schema independently. If an agent mutates its schema 3 times in a row, the breaker trips to save your LLM cache.
+- **Rolling Spend Limits (NEW)** — Ingest token costs from your LLM router (e.g., CloudPulse, OpenRouter) via webhook. The server tracks a 60-second rolling window and trips the breaker if spend crosses your tier limit.
 - **Circuit breaker** — step limits, consecutive-repeat limits, cycle limits.
 - **Global Rate Limiting** — Redis-backed rate limits across all server instances.
 - **Structured errors** — HTTP 422 with stable error codes and diagnostics.
-- **Discord / Slack Webhooks** — Instantly alerts your team when a loop is halted.
+- **Multiple Webhooks** — Fires alerts to Slack or Discord (1 for Free, 5 for Pro, Unlimited for Team).
 - **Session Inspector** — Beautiful dashboard UI to view recently tripped loops.
 - **LangGraph integration** — wrap any node in one line.
 - **240+ automated tests** — the whole stack, verified in CI on every push.
+
+## Quick Start
+
+1) Claim a free API key at `agenttrafficcop.com`.
+2) Install the SDK:
+```bash
+pip install agenttrafficcop
+```
+3) Initialize the Guard client and protect your agents:
+```python
+import asyncio
+from agenttrafficcop import Guard, LoopDetected
+
+async def main():
+    async with Guard(url="https://api.agenttrafficcop.com", api_key="atc_live_...") as guard:
+        try:
+            result = await guard.check(
+                session_id="run-42",
+                sender="coder",
+                recipient="reviewer",
+                payload={"diff": "fix typo", "file": "app.py"},
+                # Pass your tools schema to catch quiet loops (cache-breaking)
+                schema={"tools": [{"name": "read_file"}]} 
+            )
+            print(f"Approved at step {result.step}")
+        except LoopDetected as e:
+            print(f"Loop caught: {e.error_code}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
 
 ## See It In Action
 
@@ -70,33 +104,20 @@ Same agents. Every message goes through the cop at https://api.agenttrafficcop.c
 
 Demo complete.
 ```
-##  Quick Start
+## REST API Usage
 
-1) Claim a free API key at `agenttrafficcop.com`.
-2) Install the SDK:
+While the Python SDK is the easiest way to integrate, AgentTrafficCop is built as a language-agnostic REST API. You can call it from Node.js, Go, Ruby, or raw `curl`.
+
+*(Set your API key as an environment variable first: `export ATC_KEY="atc_live_..."`)*
+
+### Health check (no auth required)
 ```bash
- pip install agenttrafficcop
+curl https://api.agenttrafficcop.com/health
 ```
-3) Initialize the Guard client:
-```python
-
-from agenttrafficcop import Guard, LoopDetected
-
-guard = Guard(
-    url="https://api.agenttrafficcop.com",
-    api_key="your-api-key-here"
-)
-```
-
-## Health check (no auth)
-```bash
-curl http://localhost:8000/health
-```
-
 ## Approve a message
 
 ```bash
-curl -X POST http://localhost:8000/v1/route \
+curl -X POST https://api.agenttrafficcop.com/v1/route \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $ATC_KEY" \
   -d '{
@@ -107,8 +128,7 @@ curl -X POST http://localhost:8000/v1/route \
     "payload": {"diff": "fix typo", "file": "app.py"}
   }'
 ```
-Response:
-
+### Response (HTTP 200 OK):
 ```json
 {
   "approved": true,
@@ -118,22 +138,19 @@ Response:
   "message": "Message approved and forwarded."
 }
 ```
-
-## Trip the breaker
-
-Send the same payload 3 more times in the same session:
+### Trip the breaker (Loop Detection)
+If an agent gets stuck, it will keep sending the exact same payload. Send the same payload 3 more times in the same session:
 
 ```bash
 for i in 1 2 3; do
-  curl -s -X POST http://localhost:8000/v1/route \
+  curl -s -X POST https://api.agenttrafficcop.com/v1/route \
     -H 'content-type: application/json' \
     -H "authorization: Bearer $ATC_KEY" \
     -d '{"session_id":"run-42","sender":"coder","recipient":"reviewer","intent":"handoff","payload":{"diff":"fix typo","file":"app.py"}}'
   echo
 done
 ```
-
-Fourth call returns HTTP 422:
+### Response on the 4th call (HTTP 422 Unprocessable Entity):
 
 ```json
 {
@@ -151,27 +168,20 @@ Fourth call returns HTTP 422:
 
 ## Endpoints
 
+The SDK interacts with these core API endpoints:
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `POST` | `/v1/route` | Bearer | Evaluate and approve an inter-agent message |
+| `POST` | `/v1/ingest/usage` | Bearer | Ingest rolling token spend from an external router |
 | `GET` | `/health` | None | Liveness and uptime probe |
 | `GET` | `/v1/usage` | Bearer | Return this key's tier and monthly usage |
-| `GET` | `/v1/auth/session-logs` | Bearer | Fetch recent session activity (Dashboard) |
-| `GET` | `/v1/sessions` | Admin | List active sessions |
-| `GET` | `/v1/sessions/{id}` | Admin | Inspect one session |
-| `DELETE` | `/v1/sessions/{id}` | Admin | Reset one session |
-| `POST` | `/v1/admin/cleanup` | Admin | Expire idle sessions in bulk |
-| `GET` | `/metrics` | Bearer | Prometheus metrics endpoint |
 
-Admin endpoints require a key listed in `ATC_ADMIN_API_KEYS`. If that
-variable is empty, admin access falls back to the `team` tier.
+> **Note:** The AgentTrafficCop server also exposes endpoints for user authentication, Polar billing, and admin session management (e.g., `/v1/sessions`, `/v1/admin/cleanup`, `/metrics`) to power the hosted dashboard. Those are not part of the SDK and are not meant to be called directly by your agents. You can view the full interactive API map at `https://api.agenttrafficcop.com/docs`.
 
 ## LangGraph Support
 
-AgentTrafficCop ships with a first-class
-LangGraph adapter. Wrap any
-node in your graph and every handoff passes through the cop:
+AgentTrafficCop ships with a first-class LangGraph adapter. Wrap any node in your graph and every handoff passes through the cop. It automatically handles both async and sync nodes.
 
 ```python
 from agenttrafficcop import Guard
@@ -217,41 +227,51 @@ finally:
 ```
 ## Tiers & Usage
 
-Every API key is assigned a tier, and every tier has a monthly message
-limit. The server counts messages per key and rejects further requests
-once a key exceeds its limit.
+Every API key belongs to a user account, and every account is assigned a tier. The server tracks usage in real-time and enforces limits across all API keys belonging to the same account (so creating a new key won't reset your quota).
 
-### Default tiers
-| Tier | Monthly message limit | Agent limit |
-|---|---|---|
-| `free` | 10,000 | 5 |
-| `pro` | 250,000 | 25 |
-| `team` | 2,000,000 | 100 |
+### Plan Limits
+| Feature | Free ($0) | Pro ($49/mo) | Team ($199/mo) |
+|---|---|---|---|
+| **Monthly messages** | 10,000 | 250,000 | 2,000,000 |
+| **Protected agents** | 5 | 25 | 100 |
+| **Quiet Loop (Schema)** | ❌ | ✅ | ✅ |
+| **Custom Spend Limits** | ❌ | ✅ | ✅ |
+| **Custom Loop Thresholds** | ❌ | ❌ | ✅ |
+| **Webhooks** | 1 | 5 | Unlimited |
+| **Log retention** | 7 days | 30 days | 1 year |
 
 ### What counts toward the limit
+Only **approved** messages count. Rejected messages do not increment the counter. Trips, schema failures, auth errors, and rate-limited requests are completely free and will not drain your monthly quota.
 
-Only approved messages count. Rejected messages do not increment
-the counter (trips, schema failures, auth errors, and rate limits are free).
+### Rate Limits
+To ensure fair usage and protect the platform from abuse, API calls are rate-limited per minute based on your tier:
+- **Free:** 60 requests / minute
+- **Pro:** 120 requests / minute
+- **Team:** 300 requests / minute
 
 ## Security Notes
 
-- **Auth is fail-closed** — if no API keys are configured, every `/v1/route` call is rejected with 401.
-- **Constant-time key comparison** — prevents timing attacks.
-- **Auth endpoints are rate-limited** — 10 requests/minute per IP.
-- **Global rate limiting** — Redis-backed to share quotas across all replicas.
-- **No secrets in logs** — only truncated SHA-256 fingerprints for correlation.
-- **Canonical JSON** — hashes are deterministic regardless of key order.
-- **No `pickle` / `eval` / `exec`** — hashing uses canonical JSON.
-- **Bounded memory** — sessions and hash histories are capped.
-- **Body size limit** — enforced on actual bytes, not just `Content-Length`.
-- **Proxy trust is opt-in** — `X-Forwarded-For` ignored unless `ATC_TRUST_PROXY=true`.
+- **Auth is fail-closed** — If no API keys are configured on the server, every `/v1/route` call is rejected with 401.
+- **Constant-time key comparison** — Uses `secrets.compare_digest` to prevent timing attacks on API keys and cron secrets.
+- **Strict rate limiting** — Global Redis-backed rate limits to share quotas across all replicas, with dedicated limiters for auth routes to prevent brute-forcing.
+- **Webhook HMAC verification** — Incoming webhooks from billing (Polar) and routing providers (CloudPulse) are cryptographically verified using HMAC signatures.
+- **SSRF protection** — Outbound webhooks are validated at send-time against a deny-list of private IP ranges (loopback, RFC 1918, AWS metadata) and redirects are disabled.
+- **Database integrity** — SQLite enforces strict Foreign Keys (`PRAGMA foreign_keys=ON`) and uses Write-Ahead Logging (WAL) with a 5-second `busy_timeout` to prevent data corruption and lock crashes.
+- **GDPR compliant** — Deleting a user account cascades and permanently destroys all associated API keys, webhooks, and session logs.
+- **No secrets in logs** — Only truncated SHA-256 fingerprints are logged for correlation, never raw keys or passwords.
+- **Safe JSON parsing** — No `pickle`, `eval`, or `exec`. Payload hashing uses strict canonical JSON to prevent RCE or hash collisions.
+- **Bounded memory** — Sessions, hash histories, rate-limit dictionaries, and webhook caches are strictly capped to prevent OOM attacks.
+- **Payload limits** — HTTP body size is enforced on actual stream bytes (not just `Content-Length`), and deeply nested JSON is rejected.
+- **Proxy trust is opt-in** — `X-Forwarded-For` headers are ignored for rate limiting unless `ATC_TRUST_PROXY=true` is explicitly set.
 
 ## Limitations (Honest list)
 
-- **In-memory backend is single-process.** Without Redis, sessions and usage counters do not survive restarts.
+- **SQLite by default.** We use SQLite for zero-config setup and speed. It's fine for up to ~1,000 req/s single-process (thanks to WAL mode, `busy_timeout`, and auth caching), but multi-worker deployments require Postgres, which is on the roadmap.
+- **Redis is required for multi-worker.** Without `ATC_REDIS_URL` set, sessions, usage counters, and rate limits are stored in local memory. This means they won't survive restarts, and they won't sync across multiple Uvicorn workers.
 - **Exact-match loop detection.** Payloads are compared by exact SHA-256. Semantically equivalent but differently-worded loops (e.g., "fix bug" vs "resolve issue") are not caught. Embeddings are a future feature.
-- **No multi-tenancy.** One API key list per deployment; sessions are global. Workspaces are a future feature.
-- **SQLite by default.** Fine for up to ~1,000 req/s single-process (thanks to auth caching). Postgres support is on the roadmap for multi-worker deployments.
+- **LangChain native callbacks.** We natively support LangGraph via `guarded_node()`. For standard LangChain, you must wrap your calls manually using `Guard` or `GuardSync`. A native `AgentTrafficCopCallback` handler is on the roadmap.
+- **Dashboard UI for Custom Limits.** The backend enforces tier-based spend limits and custom loop thresholds. However, the frontend dashboard UI to let users configure their own limits is not live yet.
+- **Webhook Cache Eviction.** When the webhook cache hits 10,000 entries, the oldest 10% are evicted. This prevents OOM, but means a few URLs will require a quick DB re-fetch.
 
 ## License
 MIT.
