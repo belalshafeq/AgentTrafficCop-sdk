@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-11-11
+
+### Added
+- **Quiet Loop Detection:** The SDK can now hash the `tools` schema independently of the payload. If the schema mutates 3 times in a row, the breaker trips to prevent LLM cache-breaking.
+- **Rolling Spend Limits:** New `/v1/ingest/usage` endpoint to ingest token costs from external routers (like CloudPulse) and enforce dynamic, tier-based spend limits in a 60-second rolling window.
+- **Multiple Webhooks:** Users can now register multiple Slack/Discord webhooks (Tier 1: 1, Pro: 5, Team: Unlimited).
+- **Custom Thresholds:** Enterprise users can now override global `max_steps` and `max_repeated_hashes` limits via custom DB settings.
+- **Log Retention:** Added an admin cron endpoint (`/v1/admin/prune-logs`) to enforce tier-based log retention (7 days, 30 days, 1 year) and prevent database bloat.
+
+### Fixed
+- **LangGraph Async Crash:** Fixed a critical bug where running a sync node inside an async event loop (`.ainvoke()`) would crash the user's app. It now safely bridges to a thread pool.
+- **SQLite Concurrency Crash:** Added `PRAGMA busy_timeout=5000` and `PRAGMA foreign_keys=ON` to prevent `database is locked` errors under heavy concurrent load.
+- **SDK Connection Leak:** Added `__del__` to `GuardSync` to prevent file descriptor leaks (`Too many open files`) if a user forgets to use a context manager.
+- **Rate Limiter OOM:** Replaced the dictionary in the in-memory rate limiter with an `OrderedDict` to prevent memory exhaustion during DDoS attempts.
+- **Webhook Cache Thundering Herd:** Changed the webhook cache eviction policy to drop the oldest 10% instead of wiping the entire cache, preventing DB spikes.
+- **Cron Auth Bypass:** Added a dedicated `ATC_CRON_SECRET` environment variable so Render Cron jobs can trigger log pruning without needing a hardcoded user API key.
+
+### Changed
+- **Renamed `ConnectionError`:** Renamed the SDK's `ConnectionError` to `AtcConnectionError` to prevent shadowing Python's built-in `ConnectionError`.
+- **Docker `/data` Permissions:** Implemented a `gosu` entrypoint script to properly chown the persistent `/data` volume to the unprivileged `atc` user, preventing SQLite write failures on Render.
+
+### Security
+- HMAC verification added for billing (Polar) and routing (CloudPulse) webhooks.
+- Session logs are now properly cascaded and deleted when a user deletes their account (GDPR compliance).
+- Webhook URLs are validated against SSRF (DNS rebinding) before being stored.
+
 ## [1.0.1] - 2024-05-20
 
 ### Added
@@ -18,9 +44,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSRF protection for outbound webhooks.
 - JWT revocation on password reset via `password_version`.
 - 64-bit (16-char) API key fingerprints to prevent collision attacks.
-- Stored XSS vulnerability patched in the dashboard.
-
-### Changed
-- Optimized database performance by caching auth checks (`lru_cache`).
-- Moved session persistence to happen *after* all agent/tier limits pass.
-- Published to PyPI via `pip install agenttrafficcop`.
