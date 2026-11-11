@@ -270,7 +270,6 @@ To ensure fair usage and protect the platform from abuse, API calls are rate-lim
 - **Redis is required for multi-worker.** Without `ATC_REDIS_URL` set, sessions, usage counters, and rate limits are stored in local memory. This means they won't survive restarts, and they won't sync across multiple Uvicorn workers.
 - **Exact-match loop detection.** Payloads are compared by exact SHA-256. Semantically equivalent but differently-worded loops (e.g., "fix bug" vs "resolve issue") are not caught. Embeddings are a future feature.
 - **LangChain native callbacks.** We natively support LangGraph via `guarded_node()`. For standard LangChain, you must wrap your calls manually using `Guard` or `GuardSync`. A native `AgentTrafficCopCallback` handler is on the roadmap.
-- **Dashboard UI for Custom Limits.** The backend enforces tier-based spend limits and custom loop thresholds. However, the frontend dashboard UI to let users configure their own limits is not live yet.
 - **Webhook Cache Eviction.** When the webhook cache hits 10,000 entries, the oldest 10% are evicted. This prevents OOM, but means a few URLs will require a quick DB re-fetch.
 
 ## License
