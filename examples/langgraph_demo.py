@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, TypedDict
 
@@ -47,9 +48,19 @@ from agenttrafficcop.langgraph import guarded_node  # noqa: E402
 # ---------------------------------------------------------------------------
 
 ATC_URL = os.getenv("ATC_URL", "http://localhost:8000")
-ATC_KEY = os.getenv("ATC_KEY") or _first_api_key()
 
-SESSION_ID = "langgraph-demo"
+def _first_api_key() -> str:
+    raw = os.getenv("ATC_API_KEYS", "")
+    if not raw:
+        print(
+            "ERROR: no ATC_API_KEYS found in environment or .env. "
+            "Set one, e.g. by copying .env.example to .env.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return raw.split(",")[0].strip()
+
+ATC_KEY = os.getenv("ATC_KEY") or _first_api_key()
 
 # ---------------------------------------------------------------------------
 # Pretty printing
@@ -74,18 +85,6 @@ def header(text: str, color: str = CYAN) -> None:
     hr("═")
     print(f"{color}{BOLD}{text}{RESET}")
     hr("═")
-
-
-def _first_api_key() -> str:
-    raw = os.getenv("ATC_API_KEYS", "")
-    if not raw:
-        print(
-            "ERROR: no ATC_API_KEYS found in environment or .env. "
-            "Set one, e.g. by copying .env.example to .env.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    return raw.split(",")[0].strip()
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +152,7 @@ def reviewer_logic(state: DemoState) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def build_graph(guard: Guard) -> Any:
+def build_graph(guard: Guard, session_id: str) -> Any:
     """Build a LangGraph with two guarded nodes and a ping-pong loop."""
     graph = StateGraph(DemoState)
 
@@ -164,7 +163,7 @@ def build_graph(guard: Guard) -> Any:
             guard=guard,
             sender="reviewer",       # who is handing off *to* the coder
             recipient="coder",
-            session_id=lambda s: s.get("session_id", SESSION_ID),
+            session_id=lambda s: s.get("session_id", session_id),
             payload=lambda s: {
                 "draft": s.get("draft", ""),
                 "feedback": s.get("feedback", ""),
@@ -179,7 +178,7 @@ def build_graph(guard: Guard) -> Any:
             guard=guard,
             sender="coder",          # who is handing off *to* the reviewer
             recipient="reviewer",
-            session_id=lambda s: s.get("session_id", SESSION_ID),
+            session_id=lambda s: s.get("session_id", session_id),
             payload=lambda s: {
                 "draft": s.get("draft", ""),
                 "feedback": s.get("feedback", ""),
@@ -206,6 +205,9 @@ async def main() -> int:
     print(f"{BOLD}AgentTrafficCop × LangGraph demo{RESET}")
     print(f"{DIM}Two guarded nodes. One loop. The breaker trips.{RESET}\n")
 
+    # FIX: Generate a unique session ID so we don't need admin rights to reset
+    session_id = f"langgraph-demo-{uuid.uuid4().hex[:8]}"
+
     async with Guard(url=ATC_URL, api_key=ATC_KEY) as guard:
         # Health check so failures are obvious.
         try:
@@ -223,19 +225,16 @@ async def main() -> int:
             )
             return 2
 
-        # Clean slate.
-        await guard.reset_session(SESSION_ID)
-
         header("LangGraph: coder ↔ reviewer with guarded nodes", GREEN)
         print(
             f"{DIM}Every node invocation passes through AgentTrafficCop. "
             f"Watch for the trip.{RESET}\n"
         )
 
-        app = build_graph(guard)
+        app = build_graph(guard, session_id)
 
         initial_state: DemoState = {
-            "session_id": SESSION_ID,
+            "session_id": session_id,
             "draft": "",
             "feedback": "",
             "steps": 0,
