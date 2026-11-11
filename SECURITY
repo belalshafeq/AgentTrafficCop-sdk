@@ -13,9 +13,10 @@ AgentTrafficCop is built with a fail-closed architecture. We assume the network 
 - **Passwords:** Hashed using Bcrypt with a strict 72-byte limit to prevent truncation bypasses.
 - **JWT Revocation:** Session tokens carry a `password_version` claim. Resetting a password instantly invalidates all existing JWTs for that user, neutralizing stolen tokens.
 - **SSRF Protection:** Outbound webhooks are validated at send-time against a deny-list of private IP ranges (RFC 1918, loopback, AWS metadata) and redirects are disabled.
+- **Webhook Security:** All incoming webhooks from billing (Polar) and routing providers (CloudPulse) are cryptographically verified using HMAC-SHA256 signatures.
+- **Database Integrity:** SQLite enforces strict Foreign Keys (`PRAGMA foreign_keys=ON`) and uses Write-Ahead Logging (WAL) with a 5-second busy timeout to prevent data corruption and lock crashes under load.
 - **Verification TTL:** Email verification tokens expire after 24 hours. A database leak cannot be used to verify dormant accounts.
 - **Rate Limiting:** Global Redis-backed rate limiting to share quotas across all replicas (with an in-memory fallback for local dev). Auth endpoints are strictly throttled against brute-force.
-- **Billing Security:** Lemon Squeezy webhooks are cryptographically verified using HMAC signatures.
 - **Payload Limits:** HTTP request bodies are capped at 1MB to prevent memory exhaustion. Deeply nested JSON payloads are rejected before hashing.
 - **Audit Logging:** Governance events (trips, resets, auth failures) are written to a durable, append-only JSON lines log.
 - **CORS:** Strictly configured to only allow trusted origins in production. `X-Forwarded-For` is ignored unless explicitly trusted via `ATC_TRUST_PROXY`.
