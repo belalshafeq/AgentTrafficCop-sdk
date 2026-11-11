@@ -254,7 +254,7 @@ To ensure fair usage and protect the platform from abuse, API calls are rate-lim
 - **Auth is fail-closed** — If no API keys are configured on the server, every `/v1/route` call is rejected with 401.
 - **Constant-time key comparison** — Uses `secrets.compare_digest` to prevent timing attacks on API keys and cron secrets.
 - **Strict rate limiting** — Global Redis-backed rate limits to share quotas across all replicas, with dedicated limiters for auth routes to prevent brute-forcing.
-- **Webhook HMAC verification** — Incoming webhooks from billing (Polar) and routing providers (CloudPulse) are cryptographically verified using HMAC signatures.
+- **Billing HMAC verification** — Incoming webhooks from our payment processor (Polar) are cryptographically verified using HMAC-SHA256 signatures.
 - **SSRF protection** — Outbound webhooks are validated at send-time against a deny-list of private IP ranges (loopback, RFC 1918, AWS metadata) and redirects are disabled.
 - **Database integrity** — SQLite enforces strict Foreign Keys (`PRAGMA foreign_keys=ON`) and uses Write-Ahead Logging (WAL) with a 5-second `busy_timeout` to prevent data corruption and lock crashes.
 - **GDPR compliant** — Deleting a user account cascades and permanently destroys all associated API keys, webhooks, and session logs.
