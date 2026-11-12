@@ -263,6 +263,7 @@ To ensure fair usage and protect the platform from abuse, API calls are rate-lim
 - **Bounded memory** — Sessions, hash histories, rate-limit dictionaries, and webhook caches are strictly capped to prevent OOM attacks.
 - **Payload limits** — HTTP body size is enforced on actual stream bytes (not just `Content-Length`), and deeply nested JSON is rejected.
 - **Proxy trust is opt-in** — `X-Forwarded-For` headers are ignored for rate limiting unless `ATC_TRUST_PROXY=true` is explicitly set.
+- **Secure Router Ingestion** — Ingest token costs from your LLM router (e.g. OpenRouter) via a dedicated webhook endpoint secured by HMAC-SHA256 signatures.
 
 ## Limitations (Honest list)
 
