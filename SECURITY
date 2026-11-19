@@ -2,21 +2,129 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AgentTrafficCop, please do not open a public issue. Instead, email me directly at **belalshafeq@gmail.com**. I will respond within 24 hours.
+If you discover a security vulnerability in AgentTrafficCop, **please do not open a public issue or publish exploit details**.
 
-## Security Posture
+Email [belalshafeq@gmail.com](mailto:belalshafeq@gmail.com).
 
-AgentTrafficCop is built with a fail-closed architecture. We assume the network is hostile and handle credentials with strict isolation.
+I aim to acknowledge reports within **24 hours**, but response and resolution times may vary.
 
-- **API Keys:** Raw keys are never stored. We only store SHA-256 hashes. We use constant-time comparisons (`secrets.compare_digest`) to prevent timing attacks.
-- **Collision Resistance:** API key fingerprints use 64-bit (16-character) SHA-256 prefixes, minimizing the risk of cross-user tier assignment.
-- **Passwords:** Hashed using Bcrypt with a strict 72-byte limit to prevent truncation bypasses.
-- **JWT Revocation:** Session tokens carry a `password_version` claim. Resetting a password instantly invalidates all existing JWTs for that user, neutralizing stolen tokens.
-- **SSRF Protection:** Outbound webhooks are validated at send-time against a deny-list of private IP ranges (RFC 1918, loopback, AWS metadata) and redirects are disabled.
-- **Webhook Security:** All incoming webhooks from billing (Polar) and routing providers (CloudPulse) are cryptographically verified using HMAC-SHA256 signatures.
-- **Database Integrity:** SQLite enforces strict Foreign Keys (`PRAGMA foreign_keys=ON`) and uses Write-Ahead Logging (WAL) with a 5-second busy timeout to prevent data corruption and lock crashes under load.
-- **Verification TTL:** Email verification tokens expire after 24 hours. A database leak cannot be used to verify dormant accounts.
-- **Rate Limiting:** Global Redis-backed rate limiting to share quotas across all replicas (with an in-memory fallback for local dev). Auth endpoints are strictly throttled against brute-force.
-- **Payload Limits:** HTTP request bodies are capped at 1MB to prevent memory exhaustion. Deeply nested JSON payloads are rejected before hashing.
-- **Audit Logging:** Governance events (trips, resets, auth failures) are written to a durable, append-only JSON lines log.
-- **CORS:** Strictly configured to only allow trusted origins in production. `X-Forwarded-For` is ignored unless explicitly trusted via `ATC_TRUST_PROXY`.
+Please include:
+
+- The affected component and version, if known.
+- A description of the vulnerability and its potential impact.
+- Minimal reproduction steps or a proof of concept.
+- Whether the issue affects the Python SDK, hosted API, dashboard, or an integration.
+
+Do not include real API keys, passwords, verification codes, customer payloads, or other sensitive information. Use test accounts and redact credentials.
+
+Please avoid destructive testing, denial-of-service testing, accessing other users' data, or testing systems you do not control without authorization.
+
+## Scope
+
+This public repository distributes the AgentTrafficCop SDK and related documentation.
+
+Security reports may also concern the hosted service at:
+
+- `https://agenttrafficcop.com`
+- `https://api.agenttrafficcop.com`
+
+The controls described below include hosted backend behavior. Installing the SDK alone does not provide every server-side control, and self-hosted deployments depend on their configuration and infrastructure.
+
+## Security Model
+
+AgentTrafficCop evaluates protected actions before they execute. Applications must check the decision and stop execution when a check fails.
+
+It is not a sandbox and does not automatically intercept every tool, message, or LLM call.
+
+With enforcement enabled, SDK check failures propagate to the caller. Applications that suppress exceptions, bypass checks, or use dry-run mode can continue execution without enforcement.
+
+AgentTrafficCop cannot undo completed actions or automatically cancel all in-flight operations.
+
+## Implemented Controls
+
+### API Keys
+
+Account-issued API keys are stored as SHA-256 hashes rather than recoverable plaintext.
+
+Shortened fingerprints are used for identification and correlation. Fingerprints are not credentials, and their finite length does not make collisions impossible.
+
+Keep raw API keys private. Server operators who configure keys through environment variables must also secure those environment values.
+
+### Passwords and Login Sessions
+
+Passwords are hashed using bcrypt. Password inputs are limited to 72 UTF-8 bytes to avoid silent bcrypt truncation.
+
+Login JWTs include a password-version value. The backend checks that value against the current account record, allowing password resets to invalidate older login tokens on subsequent authenticated requests.
+
+This does not cancel requests already in progress or replace protection of the JWT signing secret.
+
+### Email Verification
+
+New registrations require email verification before the account and first API key are created.
+
+The signup flow uses:
+
+- Six-digit email codes with a 10-minute expiry.
+- A maximum of five verification attempts per code.
+- A 60-second resend cooldown and an email-based hourly send limit.
+- Hashed code and signup-token values in persistent storage.
+- Short-lived, single-use, email-bound signup tokens.
+- Transactional account creation, first-key creation, and signup-token consumption.
+
+Legacy account-verification links remain supported and have a separate expiration policy.
+
+Email verification establishes access to an inbox. It does not establish legal identity or exclude disposable email providers. Expiration and hashing reduce risk but do not make database or application-secret compromise harmless.
+
+### Authorization and Tenant Isolation
+
+Protected endpoints require the relevant API-key, account-token, administrator, or webhook authentication.
+
+Dashboard and run-record access checks account or API-key ownership. Reusing another customer's session ID does not grant access to that customer's records.
+
+Administrative permissions are separate from ordinary agent API-key access.
+
+### Incoming Webhooks and Cost Reports
+
+Billing and supported cost-ingestion endpoints validate signatures using their endpoint-specific verification mechanisms.
+
+Generic usage ingestion requires a timestamped HMAC signature over the exact request body. A bearer token alone is insufficient.
+
+Spend ingestion includes event deduplication. Deduplication scope and retention depend on the reporting path.
+
+Signature validation authenticates the reporting source; it does not independently prove that reported costs are accurate. Keep reporting secrets on trusted backend systems, not in browser code.
+
+### Outbound Webhooks
+
+Outbound webhook URLs are checked against restricted destinations, and HTTP redirects are disabled.
+
+These checks reduce SSRF exposure but are not a substitute for infrastructure-level egress restrictions or a guarantee against every DNS and network-resolution attack.
+
+Webhook notifications are best effort, not a guaranteed-delivery security channel.
+
+### Rate Limiting
+
+Authentication endpoints and protected API operations use rate limits.
+
+Redis-backed limiting is available when configured. Some rate-limiting paths can fall back to process-local memory during Redis failures.
+
+Without a shared limiter, limits are not globally coordinated across multiple workers or instances. Process-local limiter state is lost on restart.
+
+### Request Validation and Resource Limits
+
+The server validates request schemas and enforces a configurable request-body limit, defaulting to 1 MiB.
+
+Deeply nested payloads that cannot be safely processed are rejected. Session histories and selected in-memory caches are bounded.
+
+These controls reduce resource-exhaustion risk; they do not constitute complete denial-of-service protection.
+
+### Database and Persistence
+
+SQLite connections enable foreign-key enforcement. The application attempts to use Write-Ahead Logging and configures a busy timeout to improve concurrency handling.
+
+These settings do not guarantee freedom from lock errors, corruption, storage exhaustion, or infrastructure failures.
+
+SQLite-backed records require persistent storage to survive container replacement. Operators are responsible for access controls, capacity monitoring, backups, and tested restoration procedures.
+
+Monthly usage counters are separate from active loop-detection history. Without Redis, active loop history remains process-local and is lost on restart.
+
+### Incident Evidence 
