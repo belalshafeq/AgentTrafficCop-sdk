@@ -44,13 +44,13 @@ The per-run budget helper and legacy AutoGen adapter were added in SDK source ve
 Until publication, install the merged source:
 
 ```bash
-pip install 'agenttrafficcop @ git+https://github.com/belalshafeq/AgentTrafficCop.git@8674b4fb96b0fb9aa76e6a08e3995c6dcfbba9b2#subdirectory=sdk'
+pip install 'agenttrafficcop @ git+https://github.com/belalshafeq/AgentTrafficCop-sdk.git@8674b4fb96b0fb9aa76e6a08e3995c6dcfbba9b2#subdirectory=sdk'
 ```
 
 For the legacy AutoGen adapter:
 
 ```bash
-pip install 'agenttrafficcop[autogen] @ git+https://github.com/belalshafeq/AgentTrafficCop.git@8674b4fb96b0fb9aa76e6a08e3995c6dcfbba9b2#subdirectory=sdk'
+pip install 'agenttrafficcop[autogen] @ git+https://github.com/belalshafeq/AgentTrafficCop-sdk.git@8674b4fb96b0fb9aa76e6a08e3995c6dcfbba9b2#subdirectory=sdk'
 ```
 
 These commands require Git and are pinned to the feature merge commit for reproducibility.
