@@ -23,8 +23,8 @@ Check agent handoffs and protected actions before they execute. AgentTrafficCop 
 - **Webhook alerts** — configure Slack or Discord destinations for circuit-breaker notifications.
 - **Sync and async clients** — use `GuardSync` or `Guard`.
 - **LangGraph integration** — protect selected nodes with `guarded_node`.
-- **Legacy AutoGen integration** — protect the reply pipeline of supported `pyautogen==0.2.35` agents.
-
+- **Legacy AutoGen integration — upcoming SDK 1.1.0** — protect the reply pipeline of supported `pyautogen==0.2.35` agents.
+  
 Detection is deterministic, not semantic. Differently worded messages with similar meaning are not treated as identical payloads.
 
 ## Installation
@@ -37,25 +37,21 @@ Python **3.11+** is required.
 pip install agenttrafficcop
 ```
 
-### SDK Source Version 1.1.0
+### Upcoming SDK Release — 1.1.0
 
-The per-run budget helper and legacy AutoGen adapter were added in SDK source version **1.1.0**. That version has not yet been published to PyPI.
+The per-run budget helper and legacy AutoGen adapter are implemented
+in the development source but are not yet available in the published
+PyPI package.
 
-Until publication, install the merged source:
+Examples using `set_run_budget` or `GuardedConversableAgent` require
+the upcoming SDK 1.1.0 release. They will not work with an older
+installed package.
+
+Existing published SDK functionality remains available:
 
 ```bash
-pip install 'agenttrafficcop @ git+https://github.com/belalshafeq/AgentTrafficCop-sdk.git@8674b4fb96b0fb9aa76e6a08e3995c6dcfbba9b2#subdirectory=sdk'
+pip install agenttrafficcop
 ```
-
-For the legacy AutoGen adapter:
-
-```bash
-pip install 'agenttrafficcop[autogen] @ git+https://github.com/belalshafeq/AgentTrafficCop-sdk.git@8674b4fb96b0fb9aa76e6a08e3995c6dcfbba9b2#subdirectory=sdk'
-```
-
-These commands require Git and are pinned to the feature merge commit for reproducibility.
-
-## Quick Start
 
 1. Create an account and verify your email at [agenttrafficcop.com/dashboard](https://agenttrafficcop.com/dashboard).
 2. Obtain your API key.
