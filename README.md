@@ -4,64 +4,76 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
 [![CI](https://github.com/belalshafeq/AgentTrafficCop-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/belalshafeq/AgentTrafficCop-sdk/actions/workflows/ci.yml)
 
+**Detect repeated agent behavior. Inspect the evidence. Decide when to stop.**
+
 The official Python SDK for **[AgentTrafficCop](https://agenttrafficcop.com)** — a runtime circuit breaker for multi-agent workflows.
 
-Check agent handoffs and protected actions before they execute. AgentTrafficCop validates the message, fingerprints its payload, and rejects actions that violate loop, step, usage, or configured spending policies.
+Place a guard check before an agent handoff, tool invocation, or other protected action. AgentTrafficCop evaluates the submitted action against loop, step, usage, and configured spending policies.
 
-> **Your integration must stop on rejection.** AgentTrafficCop does not automatically intercept every LLM call, forward messages, execute tools, or cancel actions already in progress.
+Start in **shadow mode** to observe loop-policy decisions without blocking for those detections. Use **enforcement mode** when you want a rejected check to stop the protected action.
 
-## What It Does
+> Your integration must honor the decision. AgentTrafficCop does not execute or forward actions, automatically intercept every LLM call, or cancel work already in progress.
 
-- **Schema shield** — validates handoff fields against a strict server-side Pydantic contract.
-- **Repeated-payload detection** — uses canonical JSON and SHA-256 to detect consecutive identical payloads.
-- **Cycle detection** — detects repeating payload sequences within configured cycle bounds.
-- **Step limits** — rejects further actions after a session reaches its configured limit.
-- **Schema-change detection — Pro/Team** — flags three consecutive different submitted tool-schema hashes.
-- **Rolling spend protection** — evaluates reported costs over a 60-second window.
-- **Per-run budgets — Pro/Team** — rejects subsequent protected actions when reported cumulative run spending reaches its budget.
-- **Incident timelines** — inspect recorded decisions, hashes, and rule diagnostics without storing raw payloads in the timeline.
-- **Webhook alerts** — configure Slack or Discord destinations for circuit-breaker notifications.
+## Features
+
+- **Shadow mode** — see which loop and step checks would reject an action while allowing it to continue.
+- **Repeated-payload detection** — detect consecutive identical payloads using canonical JSON and SHA-256.
+- **Cycle detection** — detect repeating payload sequences within configured cycle bounds.
+- **Step limits** — limit the number of approved actions in an enforcement session.
+- **Strict message validation** — validate handoff fields against a server-side Pydantic contract.
+- **Schema-change detection — Pro/Team** — flag three consecutive different submitted tool-schema hashes.
+- **Rolling spend protection** — evaluate reported costs over a 60-second window.
+- **Per-run budgets — Pro/Team** — reject subsequent protected actions when reported cumulative run spending reaches its budget.
+- **Incident timelines** — inspect recorded decisions, hashes, explanations, and bounded diagnostics.
+- **Webhook alerts** — configure supported Slack or Discord destinations for enforcement notifications.
 - **Sync and async clients** — use `GuardSync` or `Guard`.
-- **LangGraph integration** — protect selected nodes with `guarded_node`.
-- **Legacy AutoGen integration — upcoming SDK 1.1.0** — protect the reply pipeline of supported `pyautogen==0.2.35` agents.
-  
-Detection is deterministic, not semantic. Differently worded messages with similar meaning are not treated as identical payloads.
+- **LangGraph integration** — guard selected workflow nodes.
+- **Legacy AutoGen adapter in development source** — protect supported reply pipelines for `pyautogen==0.2.35`.
 
-## Installation
+Detection is deterministic, not semantic. Similar meaning alone does not make two differently worded payloads identical.
+
+## Installation and Release Availability
 
 Python **3.11+** is required.
 
-### Published SDK
-
 ```bash
 pip install agenttrafficcop
 ```
 
-### Upcoming SDK Release — 1.1.0
+### Published package versus development source
 
-The per-run budget helper and legacy AutoGen adapter are implemented
-in the development source but are not yet available in the published
-PyPI package.
+The PyPI package and development source do not necessarily contain the same features.
 
-Examples using `set_run_budget` or `GuardedConversableAgent` require
-the upcoming SDK 1.1.0 release. They will not work with an older
-installed package.
+The following SDK additions are implemented in development source but have not been published as a new release at the time of this documentation:
 
-Existing published SDK functionality remains available:
+- `set_run_budget(...)`
+- The legacy AutoGen adapter
+- `check(..., mode="shadow")`
+- Typed shadow-decision result fields
+
+Do not assume these helpers exist in an older installed package.
+
+Check your installed package version:
 
 ```bash
-pip install agenttrafficcop
+python -c "from importlib.metadata import version; print(version('agenttrafficcop'))"
 ```
 
-1. Create an account and verify your email at [agenttrafficcop.com/dashboard](https://agenttrafficcop.com/dashboard).
-2. Obtain your API key.
-3. Set it in your environment:
+The hosted API supports explicit shadow-mode requests independently of the Python SDK. See [Shadow Mode](#shadow-mode).
+
+Development-source examples below require a source revision containing the relevant feature. The private backend repository is not a customer installation source.
+
+## Quick Start
+
+1. Verify your email and create an account at the [dashboard](https://agenttrafficcop.com/dashboard.html).
+2. Generate an API key.
+3. Store it in your environment:
 
 ```bash
 export ATC_API_KEY="your-api-key"
 ```
 
-4. Check each protected action **before** executing it:
+4. Check the action before executing it:
 
 ```python
 import asyncio
@@ -88,14 +100,12 @@ async def main():
                 payload={"diff": "fix typo", "file": "app.py"},
             )
         except AgentTrafficCopError as exc:
-            print(f"Check failed: {exc.error_code}")
-            return  # Do not execute the protected action.
-
-        if not result.approved:
+            print("Action not executed:", exc.error_code)
             return
 
-        # Execute the actual handoff, tool, or LLM action here.
-        print(f"Approved at step {result.step}")
+        if result.approved:
+            # Execute the protected action here.
+            print("Approved at step", result.step)
 
 
 if __name__ == "__main__":
@@ -104,13 +114,9 @@ if __name__ == "__main__":
 
 Use one stable `session_id` throughout a run and a new ID for each independent run.
 
-Choose a payload that meaningfully represents the action. Adding a changing timestamp or random ID to every payload can prevent exact-repeat detection.
+Choose a payload that meaningfully represents the action. Adding a changing timestamp or random identifier to every payload can prevent exact-repeat detection.
 
-> **Dry-run mode is not enforcement.** It suppresses certain rejection errors so execution can continue. Keep it disabled when you need blocking behavior.
-
-## Synchronous Usage
-
-Use `GuardSync` in synchronous Python workflows:
+### Synchronous Usage
 
 ```python
 import os
@@ -132,46 +138,148 @@ with GuardSync(
             payload={"topic": "AI safety"},
         )
     except AgentTrafficCopError as exc:
-        print("Check failed:", exc.error_code)
+        print("Action not executed:", exc.error_code)
     else:
         if result.approved:
             # Execute the protected action here.
             print("Approved at step", result.step)
 ```
 
-Using `GuardSync` alone does not automatically hook into a framework. Call it at the appropriate execution boundary or use a supported adapter.
+Using a client alone does not hook into a framework. Call it at the execution boundary or use a supported adapter.
 
-## How Loop Detection Works
+## Shadow Mode
+
+Evaluate loop policies before allowing them to interrupt a workflow.
+
+Send:
+
+```json
+{
+  "mode": "shadow"
+}
+```
+
+as part of a normal route request.
+
+When a loop or step rule triggers, the API returns HTTP **200** with an approval and a separate warning:
+
+```json
+{
+  "approved": true,
+  "session_id": "shadow-example",
+  "step": 3,
+  "payload_hash": "...",
+  "mode": "shadow",
+  "would_block": true,
+  "shadow_decision": {
+    "error": "REPEATED_PAYLOAD_LOOP",
+    "message": "Detector explanation",
+    "diagnostics": {}
+  }
+}
+```
+
+The application may continue because the check is approved. The warning explains what enforcement mode would have rejected.
+
+### Try It Without an SDK Update
+
+Use a fresh session ID and submit three identical actions:
+
+```bash
+RUN_ID="shadow-test-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
+
+for i in 1 2 3; do
+  curl -sS https://api.agenttrafficcop.com/v1/route \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $ATC_API_KEY" \
+    -d "{
+      \"session_id\": \"$RUN_ID\",
+      \"sender\": \"planner\",
+      \"recipient\": \"worker\",
+      \"intent\": \"handoff\",
+      \"payload\": {\"task\": \"same-action\"},
+      \"mode\": \"shadow\"
+    }"
+  echo
+done
+```
+
+With the default repeat threshold and no other blocking policy:
+
+- Attempts 1–2: HTTP 200, `would_block: false`.
+- Attempt 3: HTTP 200, `would_block: true`.
+- The reason is `REPEATED_PAYLOAD_LOOP`.
+- Further shadow checks may continue, subject to other limits.
+
+### Development SDK Usage
+
+Requires SDK source containing shadow support:
+
+```python
+result = await guard.check(
+    session_id=run_id,
+    sender="planner",
+    recipient="worker",
+    payload={"task": "review patch"},
+    mode="shadow",
+)
+
+if result.would_block:
+    print(result.shadow_decision["error"])
+
+if result.approved:
+    # The application chooses to execute the action.
+    pass
+```
+
+`GuardSync.check(...)` supports the same arguments without `await`.
+
+### What Shadow Mode Changes
+
+Shadow mode observes the tier-appropriate:
+
+- Repeated-payload rule
+- Cycle rule
+- Step-limit rule
+- Schema-change rule
+
+It does **not** bypass authentication, input validation, rate limits, message quotas, agent limits, rolling spend blocks, or exhausted run budgets.
+
+Shadow requests consume normal quota. Detector warnings do not send alerts claiming that a workflow was halted.
+
+Shadow and enforcement use separate loop histories for the same API key and session ID. Switching to enforcement does not transfer shadow history. Run budgets and spend protection remain shared according to their existing key/run scope.
+
+The timeline labels detections as **[Shadow] Would block**.
+
+> Shadow mode is not the legacy SDK `dry_run` option. Keep `dry_run=False` when evaluating server-side shadow mode. Legacy dry-run suppresses additional errors and is not equivalent.
+
+Shadow mode is explicitly caller-selected. If guard policies are mandatory, do not let untrusted callers choose the mode.
+
+## How Detection Works
 
 ### Repeated Payloads
 
 Payloads are serialized deterministically and hashed with SHA-256.
 
-With the default consecutive-repeat threshold of **3**:
-
-1. First identical payload: approved.
-2. Second identical payload: approved.
-3. Third identical consecutive attempt: rejected.
+With the default consecutive-repeat threshold of **3**, enforcement mode approves the first two identical consecutive payloads and rejects the third.
 
 ### Repeating Cycles
 
-The server checks for repeating payload sequences within its configured maximum cycle length.
-
-The default maximum cycle length is **2**, supporting patterns such as:
+The default maximum cycle length is **2**, supporting repeating sequences such as:
 
 ```text
-payload A → payload B → payload A → payload B → …
+payload A → payload B → payload A → payload B
 ```
 
-This compares payload sequences, not simply whether two agents exchange messages. Longer cycles require appropriate server configuration.
+Detection compares payload sequences, not simply whether two agents exchange messages. Longer cycle bounds require appropriate server configuration.
 
 ### Step Limits
 
-The default maximum is **25 approved steps per session**. Further attempts are rejected by the step-limit policy.
+The default enforcement limit is **25 approved steps per session**.
+
+Shadow mode can continue beyond the configured step limit while reporting that enforcement would block.
 
 ### Schema-Change Detection — Pro/Team
-
-Pass your tool schema when checking an action:
 
 ```python
 result = await guard.check(
@@ -183,34 +291,28 @@ result = await guard.check(
 )
 ```
 
-The SDK hashes the schema independently. On Pro and Team, three consecutive different submitted schema hashes trigger the schema-mutation rule.
+The SDK hashes the submitted schema separately. Three consecutive different submitted schema hashes trigger the rule on eligible plans.
 
-This is a **heuristic for repeated schema changes**. It does not prove a semantic loop, measure cache misses, or guarantee cache savings.
+This is a schema-change heuristic—not proof of a semantic loop, measured cache misses, or guaranteed savings.
 
 ## Spending Protection
-
-AgentTrafficCop provides two separate controls:
 
 | Control | Scope | Behavior |
 |---|---|---|
 | Rolling spend threshold | API key | Evaluates reported spending over a 60-second window |
-| Per-run budget | API key + session ID | Evaluates cumulative reported spending for that run |
+| Per-run budget | API key + session ID | Evaluates cumulative reported spending for a run |
 
-### Rolling Spend Thresholds
-
-Default server thresholds are:
+Default rolling thresholds:
 
 | Free | Pro | Team |
 |---:|---:|---:|
 | $0.50 / 60 seconds | $5 / 60 seconds | $50 / 60 seconds |
 
-Production configuration can override these defaults. Pro and Team users can configure custom spend thresholds.
+Production configuration can override defaults. Pro and Team support custom rolling thresholds.
 
 ### Per-Run Budgets — Pro/Team
 
-Requires SDK source version **1.1.0** or a published release containing this feature.
-
-Set a budget before starting the run:
+Requires development SDK source containing the budget helper, or direct REST usage.
 
 ```python
 import os
@@ -229,14 +331,12 @@ with GuardSync(
         session_id=run_id,
         budget_usd="2.00",
     )
-
     print(budget)
 
-    # Use run_id in every protected check
-    # and in your trusted router's cost reports.
+    # Use run_id in route checks and trusted cost reports.
 ```
 
-The async client supports:
+The asynchronous equivalent is:
 
 ```python
 budget = await guard.set_run_budget(
@@ -245,28 +345,26 @@ budget = await guard.set_run_budget(
 )
 ```
 
-Once reported cumulative spending reaches the budget, subsequent route checks return:
+Once reported cumulative spending reaches the budget, subsequent protected checks return:
 
 ```text
 HTTP 402
 RUN_BUDGET_EXCEEDED
 ```
 
-Updating a budget preserves accumulated spending. Raising the budget above reported spending can permit further checks, provided no other policy blocks them.
+Updating the budget preserves accumulated spending. Raising it can permit further actions if no other rule blocks them.
 
-Run budgets do not reset monthly. Use a new session ID for a new run.
+Budgets do not reset monthly. Use a new session ID for a new run.
 
-### Cost Reporting Is Required
+### Connect Cost Reporting
 
-**Setting a budget does not automatically connect provider billing.**
+Setting a budget does not connect provider billing automatically.
 
-A trusted backend or router must report incremental costs through:
+A trusted backend must report incremental costs to:
 
 ```text
 POST /v1/ingest/usage
 ```
-
-Example body:
 
 ```json
 {
@@ -279,13 +377,13 @@ Example body:
 
 Requirements:
 
-- Send each action's **incremental cost**, not a running total.
-- Use stable, unique event IDs for retries and deduplication.
-- Use the same session ID as the protected route checks.
-- Sign the exact body using the configured ingestion secret.
-- Do not report the same spending through multiple ingestion sources.
+- Report incremental costs, not cumulative totals.
+- Use stable, unique event IDs for retries.
+- Match the protected run's session ID.
+- Sign the exact request body.
+- Do not report the same spending through multiple sources.
 
-The endpoint requires:
+Required headers:
 
 ```text
 X-ATC-Timestamp
@@ -298,22 +396,11 @@ The signature is the hexadecimal SHA-256 HMAC of:
 timestamp + "." + exact_request_body
 ```
 
-Keep `ATC_INGEST_WEBHOOK_SECRET` on the trusted reporting backend. **Never expose it in browser code.** A bearer token alone does not authenticate this endpoint.
+Keep `ATC_INGEST_WEBHOOK_SECRET` on the trusted reporting backend. Never expose it in browser code. A bearer token alone does not authenticate ingestion.
 
-The server also implements a CloudPulse webhook handler with explicit external-key mapping. CloudPulse key-level window reports do not currently attribute spending to individual runs.
+The CloudPulse handler supports explicit external-key mapping. A threshold response without a mapping does not establish that an ATC key was blocked. CloudPulse key-level window reports do not currently attribute costs to individual runs.
 
-Other routers require an integration that produces the supported reports.
-
-### Spending Limitations
-
-These controls are **not provider-side hard caps**:
-
-- Missing reports mean spending is not known to AgentTrafficCop.
-- Delayed reports, parallel actions, and in-flight calls can cause overshoot.
-- Completed spending cannot be reversed.
-- Actions that bypass AgentTrafficCop are not blocked.
-- A run without a configured budget does not inherit another run's budget.
-- Run budgets are key-scoped; another key does not share the same run budget.
+> Spend protection is report-driven, not a provider-side hard cap. Missing or delayed reports, parallel work, and in-flight calls can cause overshoot. Your application must honor rejections.
 
 ## Incident Timeline
 
@@ -321,99 +408,78 @@ In the hosted dashboard:
 
 **Overview → Recent Sessions → Inspect run**
 
-Inspect recorded checks including:
+Inspect:
 
-- Approved or rejected outcome.
-- Step number, when available.
-- Sender and recipient.
-- Triggered rule.
-- Payload hash.
-- Rule explanation and bounded diagnostics.
+- Approved, blocked, or would-block decisions
+- Shadow versus enforcement mode
+- Step number, when available
+- Sender and recipient
+- Triggered rule
+- Payload hash
+- Explanation and bounded diagnostics
 
 Pro and Team users can set or update the selected run's budget from the inspector.
 
 ### Privacy and Retention
 
-The timeline does **not** store raw payloads or request metadata. It stores identifiers, timestamps, hashes, and diagnostics.
+The timeline does not store raw payloads or request metadata. It stores identifiers, timestamps, hashes, and selected diagnostics.
+
+This does not mean the current route API is hash-only: normal checks still submit payloads for server-side validation and hashing.
 
 Hashes reveal equality and are not anonymization. Keep secrets out of agent names and session IDs.
 
 Evidence is bounded to:
 
-- The latest **200 recorded checks per run**.
-- Up to **10,000 recorded checks per API key**.
-- The applicable plan's time-based retention.
+- The latest **200 recorded checks per run**
+- Up to **10,000 recorded checks per API key**
+- The applicable plan's time-based retention
 
-Older sessions are not backfilled.
+Older activity is not backfilled. The timeline is not a full execution trace, historical replay system, or proof of money saved.
 
-This is not a complete execution trace. Malformed requests, authentication failures, rate-limited requests, and actions outside AgentTrafficCop are not all represented.
+## Framework Integrations
 
-Timeline storage does not restore the active loop detector's in-memory history after a restart.
-
-## LangGraph Integration
+### LangGraph
 
 Wrap selected nodes with `guarded_node`:
 
 ```python
-import os
-
-from langgraph.graph import StateGraph, START, END
-from agenttrafficcop import Guard
 from agenttrafficcop.langgraph import guarded_node
 
-
-async def reviewer_fn(state):
-    return {"draft": state["draft"]}
-
-
-async def run_workflow(initial_state):
-    async with Guard(
-        url="https://api.agenttrafficcop.com",
-        api_key=os.environ["ATC_API_KEY"],
-        dry_run=False,
-    ) as guard:
-        graph = StateGraph(dict)
-
-        graph.add_node(
-            "reviewer",
-            guarded_node(
-                reviewer_fn,
-                guard=guard,
-                sender="coder",
-                recipient="reviewer",
-                session_id=lambda state: state["run_id"],
-                payload=lambda state: {"draft": state["draft"]},
-                raise_on_trip=True,
-            ),
-        )
-
-        graph.add_edge(START, "reviewer")
-        graph.add_edge("reviewer", END)
-
-        app = graph.compile()
-        return await app.ainvoke(initial_state)
+graph.add_node(
+    "reviewer",
+    guarded_node(
+        reviewer_fn,
+        guard=guard,
+        sender="coder",
+        recipient="reviewer",
+        session_id=lambda state: state["run_id"],
+        payload=lambda state: {"draft": state["draft"]},
+        raise_on_trip=True,
+    ),
+)
 ```
 
-Install a compatible LangGraph version separately or use the SDK's `langgraph` extra.
+Install a compatible LangGraph version separately or use an available SDK `langgraph` extra.
 
-The wrapper supports synchronous and asynchronous node functions.
+Only wrapped nodes are protected. Preserve exception propagation so rejected checks prevent execution.
 
-Provide a stable, run-specific session ID and a meaningful payload extractor. Only wrapped nodes are protected. Preserve exception propagation so a rejected check prevents the wrapped node from executing.
+Existing adapters do not automatically enable shadow mode. Explicit adapter wiring or direct guard calls are required.
 
-## Legacy AutoGen Integration
+### Legacy AutoGen — Development Source
 
-Requires SDK source version **1.1.0** and its `autogen` extra.
+Supported version:
 
-**Supported framework: `pyautogen==0.2.35` only.**
+```text
+pyautogen==0.2.35
+```
 
-This adapter does not support AutoGen 0.4+, modern AgentChat, AG2, or arbitrary versions of similarly named packages.
+The adapter is implemented in development SDK source and is not yet included in the previously published package.
 
 ```python
 import os
 import uuid
 
-from autogen import ConversableAgent
-from agenttrafficcop import GuardSync, AgentTrafficCopError
+from agenttrafficcop import GuardSync
 from agenttrafficcop.autogen import GuardedConversableAgent
 
 
@@ -430,65 +496,30 @@ with GuardSync(
         code_execution_config=False,
         default_auto_reply="Acknowledged.",
     )
-
-    caller = ConversableAgent(
-        "caller",
-        llm_config=False,
-        human_input_mode="NEVER",
-        code_execution_config=False,
-    )
-
-    try:
-        reply = worker.generate_reply(
-            messages=[
-                {"role": "user", "content": "Review this task"}
-            ],
-            sender=caller,
-        )
-        print(reply)
-    except AgentTrafficCopError as exc:
-        print("Check failed:", exc.error_code)
-        # Stop the enclosing workflow; do not retry indefinitely.
 ```
 
-The adapter checks before running the agent's reply pipeline, including registered tool/code reply handlers.
+The adapter checks before supported `generate_reply` and `a_generate_reply` pipelines, including registered reply handlers.
 
-It supports both:
+It does not support AutoGen 0.4+, modern AgentChat, AG2, or arbitrary similarly named packages.
 
-```python
-worker.generate_reply(...)
-await worker.a_generate_reply(...)
-```
+Direct sends, direct tool calls, and execution outside guarded reply methods are not intercepted. One reply may execute multiple tools; the guard does not reserve spending per tool.
 
-The asynchronous path offloads the synchronous AgentTrafficCop check to a thread. Keep the `GuardSync` client open for the agent's lifetime.
+The adapter does not automatically report model costs or provide an execution sandbox. Dry-run guards are rejected.
 
-### AutoGen Boundaries
+## REST API
 
-- Protect every agent that executes relevant actions.
-- Direct tool calls, direct sends, and execution outside the guarded reply methods are not intercepted.
-- One reply may execute a batch of tools; the adapter performs one pre-reply check, not a reservation for each tool.
-- Rejections propagate as exceptions. A `TERMINATE` string is not treated as a universal cancellation mechanism.
-- The adapter does not automatically report LLM spending or provide a code-execution sandbox.
-- Dry-run guards are rejected by this adapter.
+Use the API from any language.
 
-## REST API Usage
-
-Use the HTTP API from any language.
-
-```bash
-export ATC_API_KEY="your-api-key"
-```
-
-### Health Check
+### Health
 
 ```bash
 curl https://api.agenttrafficcop.com/health
 ```
 
-### Evaluate an Action
+### Enforcement Check
 
 ```bash
-curl -X POST https://api.agenttrafficcop.com/v1/route \
+curl https://api.agenttrafficcop.com/v1/route \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $ATC_API_KEY" \
   -d '{
@@ -496,206 +527,135 @@ curl -X POST https://api.agenttrafficcop.com/v1/route \
     "sender": "coder",
     "recipient": "reviewer",
     "intent": "handoff",
-    "payload": {
-      "diff": "fix typo",
-      "file": "app.py"
-    }
+    "payload": {"task": "review patch"},
+    "mode": "enforce"
   }'
 ```
 
-A successful response includes:
+Omitting `mode` defaults to enforcement.
 
-```json
-{
-  "approved": true,
-  "session_id": "example-run",
-  "step": 1,
-  "payload_hash": "..."
-}
-```
-
-**Approval does not execute or forward the action.** Your application performs it after receiving approval.
-
-### Try Repeated-Payload Detection
-
-Use a fresh session ID, then submit three identical consecutive attempts:
-
-```bash
-RUN_ID="repeat-test-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
-
-for i in 1 2 3; do
-  curl -sS -X POST https://api.agenttrafficcop.com/v1/route \
-    -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $ATC_API_KEY" \
-    -d "{
-      \"session_id\": \"$RUN_ID\",
-      \"sender\": \"coder\",
-      \"recipient\": \"reviewer\",
-      \"intent\": \"handoff\",
-      \"payload\": {\"action\": \"same-action\"}
-    }"
-  echo
-done
-```
-
-With default settings and no other blocking policy, the first two are approved. The third returns HTTP 422 with:
-
-```text
-REPEATED_PAYLOAD_LOOP
-```
+Approval permits the caller to proceed; it does not execute the action.
 
 ### Core Endpoints
 
 | Method | Path | Authentication | Purpose |
 |---|---|---|---|
-| `POST` | `/v1/route` | Bearer API key | Evaluate a protected action |
-| `GET` | `/v1/usage` | Bearer API key | Return usage and tier information |
-| `PUT` | `/v1/runs/{session_id}/budget` | Bearer API key; Pro/Team | Set or update a run budget |
-| `GET` | `/v1/runs/{session_id}/budget` | Bearer API key | Read the run's budget and reported spending |
-| `GET` | `/v1/runs/{session_id}/timeline` | Bearer API key | Read recorded run evidence |
+| `POST` | `/v1/route` | Bearer API key | Evaluate an action |
+| `GET` | `/v1/usage` | Bearer API key | Read tier and usage |
+| `PUT` | `/v1/runs/{session_id}/budget` | Bearer API key; Pro/Team | Set or update a budget |
+| `GET` | `/v1/runs/{session_id}/budget` | Bearer API key | Read run spending and budget |
+| `GET` | `/v1/runs/{session_id}/timeline` | Bearer API key | Read recorded decisions |
 | `POST` | `/v1/ingest/usage` | Timestamped HMAC; ATC key in body | Report incremental costs |
 | `GET` | `/health` | None | Check service health |
 
-Timeline requests support `after` and `limit` pagination parameters. Use the response's `next_after` value for the next page.
+Timeline pagination supports `after` and `limit`. Use `next_after` for subsequent pages.
 
-The hosted service also exposes account, billing, and administrative endpoints. Agent API keys are not automatically administrator credentials.
+Agent API keys are not automatically administrator credentials.
 
-## Errors and Enforcement
-
-Errors include stable codes where supported:
+## Errors
 
 | Code | Meaning |
 |---|---|
-| `REPEATED_PAYLOAD_LOOP` | Consecutive identical payload threshold reached |
-| `CYCLIC_PAYLOAD_LOOP` | Repeating payload cycle threshold reached |
+| `REPEATED_PAYLOAD_LOOP` | Consecutive identical-payload threshold reached |
+| `CYCLIC_PAYLOAD_LOOP` | Repeating sequence threshold reached |
 | `STEP_LIMIT_EXCEEDED` | Session step limit reached |
-| `SCHEMA_MUTATION_LOOP` | Schema-change heuristic triggered |
+| `SCHEMA_MUTATION_LOOP` | Schema-change rule triggered |
 | `RUN_BUDGET_EXCEEDED` | Reported cumulative run budget reached |
 | `SPEND_LIMIT_EXCEEDED` | Rolling spend block active |
-| `TOKEN_LIMIT_EXCEEDED` | Cost integration reported a token-limit violation |
-| `TIER_LIMIT_EXCEEDED` | Monthly message allowance reached |
+| `TOKEN_LIMIT_EXCEEDED` | Integration reported a token-limit violation |
+| `TIER_LIMIT_EXCEEDED` | Account message allowance reached |
 | `AGENT_LIMIT_EXCEEDED` | Tracked-agent allowance reached |
 
-Not every rejection uses HTTP 422. Depending on the policy, responses can include HTTP **401, 402, 403, 422, or 429**.
+Rejections can use HTTP **401, 402, 403, 422, or 429**, depending on the failure.
 
-Catch `AgentTrafficCopError` when the workflow should stop on any SDK check failure, rather than catching only loop errors.
+In shadow mode, loop/step detector codes appear inside `shadow_decision` on an HTTP 200 response instead of rejecting the action.
 
-## Tiers & Usage
+Catch `AgentTrafficCopError` when a workflow should stop on any SDK check failure—not only loop errors.
 
-Listed hosted plans:
+## Plans and Usage
 
 | Feature | Free — $0 | Pro — $49/month | Team — $199/month |
 |---|---:|---:|---:|
-| Monthly approved messages | 10,000 | 250,000 | 2,000,000 |
+| Approved messages per account usage period | 10,000 | 250,000 | 2,000,000 |
 | Tracked agents | 5 | 25 | 100 |
 | Tier rate limit | 60/min | 120/min | 300/min |
-| Active API keys | 2 | 5 | Effectively unlimited |
-| Repeated-payload detection | Yes | Yes | Yes |
-| Cycle and step-limit protection | Yes | Yes | Yes |
+| Active API keys | 2 | 5 | High implementation cap |
+| Shadow mode | Yes | Yes | Yes |
+| Repeated-payload, cycle and step checks | Yes | Yes | Yes |
 | Schema-change detection | — | Yes | Yes |
 | Custom rolling spend threshold | — | Yes | Yes |
 | Per-run budgets | — | Yes | Yes |
-| Custom maximum-step threshold | — | — | Yes |
+| Custom step and repeat thresholds | — | — | Yes |
 | Incident timeline | Yes | Yes | Yes |
-| Webhook destinations | 1 | 5 | Effectively unlimited |
-| Listed log-retention period | 7 days | 30 days | 1 year |
+| Webhook destinations | 1 | 5 | High implementation cap |
+| Listed log retention | 7 days | 30 days | 1 year |
 
-“Effectively unlimited” uses a high implementation cap rather than literal infinity. Production settings may override default limits.
+Production configuration can override defaults.
 
-### Usage Accounting
+For account-issued keys, usage follows a stable account-anchored **30-day period**, not necessarily a calendar month.
 
-For account-issued keys, monthly message usage and tracked-agent membership are shared across the account's keys. Creating another key does not provide a fresh account quota.
+Message usage and tracked-agent membership are shared across the account's keys. Creating or rotating a key does not create a fresh account quota.
 
-Only approved route checks increment the monthly message counter. Rejected checks do not consume the monthly approved-message allowance, but remain subject to relevant rate limits.
+Approved shadow checks consume message quota. Rejected checks do not increment the approved-message counter but remain subject to relevant rate limits.
 
-Per-run budgets and incident timelines are **API key + session scoped**, unlike account-wide monthly usage.
+Run budgets and timelines are **API key + session scoped**, unlike account-wide message usage.
 
-### Retention
+## Reliability and Security
 
-Incident evidence has both time-based and count-based bounds described above.
+The hosted application includes authenticated endpoints, hashed API-key storage, account-scoped dashboard authorization, signed cost ingestion, billing webhook verification, request-size limits, and bounded evidence storage.
 
-Session-log pruning is implemented through an administrative operation. Operating a self-hosted server requires scheduling that operation. A retention policy is not a guarantee of an unlimited archive.
+These controls are not a compliance certification or a guarantee against every attack.
 
-## Storage and Deployment
+Usage and run records require persistent storage to survive restarts. Without Redis, active loop history is process-local, does not span independent workers, and is lost on restart. Persistent timeline records do not restore that active history.
 
-### Monthly Usage
+Webhook alerts are best-effort notifications, not a guaranteed-delivery incident queue.
 
-Without Redis, monthly message counters and tracked-agent membership use SQLite.
+For mandatory enforcement:
 
-They survive application restarts **when the SQLite database is on persistent storage**. Container-local ephemeral storage does not provide that guarantee.
+- Guard every relevant execution boundary.
+- Keep legacy `dry_run` disabled.
+- Prevent untrusted callers from selecting shadow mode.
+- Stop when a protected check fails.
+- Connect and monitor trusted cost reporting.
 
-### Loop History
+## Coming Soon
 
-Without Redis, active loop-detection history is process-local and is lost on restart. Separate workers do not share that in-memory history.
+The following are roadmap candidates, not currently available features or delivery commitments. Priorities may change based on user feedback.
 
-Redis support is available for shared session state.
+| Planned capability | Goal |
+|---|---|
+| Updated SDK release | Publish development-source budget helpers, legacy AutoGen support, and explicit shadow-mode helpers |
+| Hash-only privacy mode | Evaluate supported checks without submitting raw action payloads |
+| Historical replay and threshold comparison | Compare detector settings against suitable recorded event sequences |
+| Local-first SDK checks | Run selected deterministic loop checks locally |
+| Explicit outage policies | Configure availability behavior separately for loop and spend protections |
+| Human review and controlled resume | Review a detection and authorize limited continuation |
+| Shared spending reservations | Coordinate participating parallel workers before actions start |
+| Experimental semantic detection | Explore rephrased repetition, beginning with warning-only evaluation |
+| Additional framework integrations | Support frameworks requested by active users |
 
-### Rate Limits
+Interested in evaluating one of these capabilities? Open an [issue](https://github.com/belalshafeq/AgentTrafficCop-sdk/issues) describing your framework, workflow, and desired behavior.
 
-Rate limiting can use Redis when configured. The implementation can fall back to process-local limiting during Redis failures, so do not assume a globally enforced limit in that condition.
+## Validation
 
-### Run Records
+The private backend's shadow-mode change passed:
 
-Per-run budgets, cumulative cost totals, run cost receipts, and incident evidence are stored in SQLite.
+- **479 tests, with 1 skipped**
+- **11 deployment/content script tests**
+- **Three browser regression scripts**
 
-Configure persistent storage, monitor disk usage, and maintain tested backups.
+The repeated-payload shadow path was also exercised against the hosted API: the detector returned a would-block warning while subsequent checks continued.
 
-Budget totals and cost receipts are not erased by short-lived incident-timeline pruning.
+These are scoped validation results—not a claim that every public SDK release, customer integration, payment flow, or provider connection has been verified.
 
-### Scaling
+## Links
 
-SQLite supports multiple processes, subject to write contention and filesystem constraints. Redis does not replace the SQLite account and run-record database.
-
-Multiple hosts, independent disks, high write rates, and stronger availability requirements need an explicit storage and deployment design. No universal throughput figure is claimed.
-
-## Security Notes
-
-The implementation includes:
-
-- Hashed API-key storage.
-- Authenticated API and account endpoints.
-- Account-scoped authorization for dashboard access.
-- Timestamped HMAC verification for generic cost ingestion.
-- Signature verification for billing webhooks.
-- Webhook URL checks and disabled redirects.
-- Request-body size enforcement.
-- Bounded session histories and caches.
-- Opt-in proxy-header trust.
-- Account deletion support for associated application records, including the new run records.
-
-These controls are not a blanket compliance certification or a guarantee against every attack.
-
-Operators must also manage secrets, dependencies, backups, monitoring, and infrastructure access.
-
-## Limitations
-
-- **Not semantic detection.** Differently worded but equivalent actions may evade exact-payload checks.
-- **No automatic interception.** Unguarded actions are outside AgentTrafficCop's control.
-- **No retroactive cancellation.** Approval checks cannot undo completed calls.
-- **Cost reporting is external.** Budgets cannot enforce spending AgentTrafficCop has not received.
-- **No absolute spending guarantee.** Delayed reporting and concurrent actions can overshoot.
-- **Adapters are scoped.** LangGraph protects wrapped nodes; the AutoGen adapter supports the pinned legacy version and guarded reply methods.
-- **Timeline evidence is bounded.** It is not a full execution recording or proof of money saved.
-- **Restart durability depends on storage.** SQLite requires a persistent filesystem; active in-memory loop history remains separate.
-- **Webhooks are best-effort alerts.** They are not a durable, guaranteed-delivery incident queue.
-
-## Testing
-
-The combined backend and SDK feature branch passed **413 tests, with 1 skipped**, before merge.
-
-Coverage includes:
-
-- Loop and policy enforcement.
-- Persistent usage and run budgets.
-- Concurrent cost-report deduplication.
-- Tenant isolation and dashboard authorization.
-- Timeline privacy and bounded retention.
-- Real legacy AutoGen sync/async tool execution paths.
-
-Separate browser regressions cover signup, safe dashboard rendering, and the run inspector. Container smoke tests check non-root startup and persisted account login.
-
-These results describe tested behavior, not a claim that every customer integration or live provider connection has been verified.
+- [Website](https://agenttrafficcop.com)
+- [Dashboard](https://agenttrafficcop.com/dashboard.html)
+- [Public SDK repository](https://github.com/belalshafeq/AgentTrafficCop-sdk)
+- [Issues and feature requests](https://github.com/belalshafeq/AgentTrafficCop-sdk/issues)
+- [PyPI](https://pypi.org/project/agenttrafficcop/)
 
 ## License
 
-MIT.
+The SDK is licensed under the MIT License. See [LICENSE](LICENSE).
