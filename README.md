@@ -2,7 +2,6 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
-[![CI](https://github.com/belalshafeq/AgentTrafficCop-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/belalshafeq/AgentTrafficCop-sdk/actions/workflows/ci.yml)
 
 **Detect repeated agent behavior. Inspect the evidence. Decide when to stop.**
 
@@ -10,17 +9,17 @@ The official Python SDK for **[AgentTrafficCop](https://agenttrafficcop.com)** �
 
 Place a guard check before an agent handoff, tool invocation, or other protected action. AgentTrafficCop evaluates the submitted action against loop, step, usage, and configured spending policies.
 
-Start in **shadow mode** to observe loop-policy decisions without blocking for those detections. Use **enforcement mode** when you want a rejected check to stop the protected action.
+Start in **shadow mode** to observe detector decisions without blocking for those detections. Switch to **enforcement mode** when rejected checks should prevent the protected action.
 
 > Your integration must honor the decision. AgentTrafficCop does not execute or forward actions, automatically intercept every LLM call, or cancel work already in progress.
 
 ## Features
 
-- **Shadow mode** — see which loop and step checks would reject an action while allowing it to continue.
+- **Shadow mode** — observe which loop and step checks would reject an action while allowing it to continue.
 - **Repeated-payload detection** — detect consecutive identical payloads using canonical JSON and SHA-256.
 - **Cycle detection** — detect repeating payload sequences within configured cycle bounds.
-- **Step limits** — limit the number of approved actions in an enforcement session.
-- **Strict message validation** — validate handoff fields against a server-side Pydantic contract.
+- **Step limits** — limit approved actions in an enforcement session.
+- **Strict message validation** — validate submitted handoff fields against the server-side request contract.
 - **Schema-change detection — Pro/Team** — flag three consecutive different submitted tool-schema hashes.
 - **Rolling spend protection** — evaluate reported costs over a 60-second window.
 - **Per-run budgets — Pro/Team** — reject subsequent protected actions when reported cumulative run spending reaches its budget.
@@ -28,40 +27,55 @@ Start in **shadow mode** to observe loop-policy decisions without blocking for t
 - **Webhook alerts** — configure supported Slack or Discord destinations for enforcement notifications.
 - **Sync and async clients** — use `GuardSync` or `Guard`.
 - **LangGraph integration** — guard selected workflow nodes.
-- **Legacy AutoGen adapter in development source** — protect supported reply pipelines for `pyautogen==0.2.35`.
+- **Legacy AutoGen integration** — protect supported reply pipelines for `pyautogen==0.2.35`.
 
-Detection is deterministic, not semantic. Similar meaning alone does not make two differently worded payloads identical.
+Detection is deterministic, not semantic. Similar meaning alone does not make differently worded payloads identical.
 
-## Installation and Release Availability
+## Installation
 
 Python **3.11+** is required.
 
+Install SDK **1.1.0**:
+
 ```bash
-pip install agenttrafficcop
+python -m pip install --upgrade 'agenttrafficcop==1.1.0'
 ```
 
-### Published package versus development source
+Version 1.1.0 includes explicit shadow-mode support, typed shadow-decision fields, per-run budget helpers, and the legacy AutoGen adapter.
 
-The PyPI package and development source do not necessarily contain the same features.
+It supports:
 
-The following SDK additions are implemented in development source but have not been published as a new release at the time of this documentation:
+```text
+httpx>=0.27.0,<0.29.0
+```
 
-- `set_run_budget(...)`
-- The legacy AutoGen adapter
-- `check(..., mode="shadow")`
-- Typed shadow-decision result fields
+This allows `httpx 0.28.1` without forcing a downgrade to 0.27.x. Other installed packages may have their own dependency requirements.
 
-Do not assume these helpers exist in an older installed package.
-
-Check your installed package version:
+Check your installed SDK version:
 
 ```bash
 python -c "from importlib.metadata import version; print(version('agenttrafficcop'))"
 ```
 
-The hosted API supports explicit shadow-mode requests independently of the Python SDK. See [Shadow Mode](#shadow-mode).
+### Optional Framework Dependencies
 
-Development-source examples below require a source revision containing the relevant feature. The private backend repository is not a customer installation source.
+For LangGraph:
+
+```bash
+python -m pip install 'agenttrafficcop[langgraph]==1.1.0'
+```
+
+For legacy AutoGen:
+
+```bash
+python -m pip install 'agenttrafficcop[autogen]==1.1.0'
+```
+
+The AutoGen extra pins `pyautogen==0.2.35`. It is not intended for modern AutoGen or AG2 applications.
+
+Use a virtual environment to isolate dependencies.
+
+> Installing the SDK does not automatically instrument your application or connect provider cost reporting.
 
 ## Quick Start
 
@@ -73,14 +87,14 @@ Development-source examples below require a source revision containing the relev
 export ATC_API_KEY="your-api-key"
 ```
 
-4. Check the action before executing it:
+4. Check an action before executing it:
 
 ```python
 import asyncio
 import os
 import uuid
 
-from agenttrafficcop import Guard, AgentTrafficCopError
+from agenttrafficcop import AgentTrafficCopError, Guard
 
 
 async def main():
@@ -122,8 +136,10 @@ Choose a payload that meaningfully represents the action. Adding a changing time
 import os
 import uuid
 
-from agenttrafficcop import GuardSync, AgentTrafficCopError
+from agenttrafficcop import AgentTrafficCopError, GuardSync
 
+
+run_id = uuid.uuid4().hex
 
 with GuardSync(
     url="https://api.agenttrafficcop.com",
@@ -132,7 +148,7 @@ with GuardSync(
 ) as guard:
     try:
         result = guard.check(
-            session_id=uuid.uuid4().hex,
+            session_id=run_id,
             sender="researcher",
             recipient="writer",
             payload={"topic": "AI safety"},
@@ -145,23 +161,76 @@ with GuardSync(
             print("Approved at step", result.step)
 ```
 
-Using a client alone does not hook into a framework. Call it at the execution boundary or use a supported adapter.
+Creating a client alone does not hook into a framework. Call it at the execution boundary or use a supported adapter.
 
 ## Shadow Mode
 
-Evaluate loop policies before allowing them to interrupt a workflow.
+Evaluate detector behavior before allowing it to interrupt a workflow.
 
-Send:
+Pass `mode="shadow"` to a normal SDK check:
 
-```json
-{
-  "mode": "shadow"
-}
+```python
+import asyncio
+import os
+import uuid
+
+from agenttrafficcop import AgentTrafficCopError, Guard
+
+
+async def main():
+    run_id = uuid.uuid4().hex
+
+    async with Guard(
+        url="https://api.agenttrafficcop.com",
+        api_key=os.environ["ATC_API_KEY"],
+        dry_run=False,
+    ) as guard:
+        for attempt in range(1, 4):
+            try:
+                result = await guard.check(
+                    session_id=run_id,
+                    sender="planner",
+                    recipient="worker",
+                    payload={"task": "same-action"},
+                    mode="shadow",
+                )
+            except AgentTrafficCopError as exc:
+                # Non-shadowed policies can still reject the check.
+                print("Action not executed:", exc.error_code)
+                break
+
+            print(
+                "Attempt:",
+                attempt,
+                "Approved:",
+                result.approved,
+                "Would block:",
+                result.would_block,
+            )
+
+            if result.would_block and result.shadow_decision:
+                print("Detector:", result.shadow_decision["error"])
+
+            if result.approved:
+                # Your application may execute the protected action here.
+                pass
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-as part of a normal route request.
+`GuardSync.check(...)` supports the same arguments without `await`.
 
-When a loop or step rule triggers, the API returns HTTP **200** with an approval and a separate warning:
+With the default repeat threshold and no other blocking policy:
+
+- Attempts 1–2 are approved with `would_block: false`.
+- Attempt 3 is approved with `would_block: true`.
+- The detector reason is `REPEATED_PAYLOAD_LOOP`.
+
+### Shadow Response
+
+When a loop or step rule triggers, the API returns HTTP **200**, approval, and a separate warning:
 
 ```json
 {
@@ -181,9 +250,7 @@ When a loop or step rule triggers, the API returns HTTP **200** with an approval
 
 The application may continue because the check is approved. The warning explains what enforcement mode would have rejected.
 
-### Try It Without an SDK Update
-
-Use a fresh session ID and submit three identical actions:
+### Try Shadow Mode Through HTTP
 
 ```bash
 RUN_ID="shadow-test-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
@@ -204,36 +271,6 @@ for i in 1 2 3; do
 done
 ```
 
-With the default repeat threshold and no other blocking policy:
-
-- Attempts 1–2: HTTP 200, `would_block: false`.
-- Attempt 3: HTTP 200, `would_block: true`.
-- The reason is `REPEATED_PAYLOAD_LOOP`.
-- Further shadow checks may continue, subject to other limits.
-
-### Development SDK Usage
-
-Requires SDK source containing shadow support:
-
-```python
-result = await guard.check(
-    session_id=run_id,
-    sender="planner",
-    recipient="worker",
-    payload={"task": "review patch"},
-    mode="shadow",
-)
-
-if result.would_block:
-    print(result.shadow_decision["error"])
-
-if result.approved:
-    # The application chooses to execute the action.
-    pass
-```
-
-`GuardSync.check(...)` supports the same arguments without `await`.
-
 ### What Shadow Mode Changes
 
 Shadow mode observes the tier-appropriate:
@@ -243,11 +280,21 @@ Shadow mode observes the tier-appropriate:
 - Step-limit rule
 - Schema-change rule
 
-It does **not** bypass authentication, input validation, rate limits, message quotas, agent limits, rolling spend blocks, or exhausted run budgets.
+It does **not** bypass:
+
+- Authentication
+- Input validation
+- Rate limits
+- Message quotas
+- Agent limits
+- Rolling spend blocks
+- Exhausted run budgets
 
 Shadow requests consume normal quota. Detector warnings do not send alerts claiming that a workflow was halted.
 
-Shadow and enforcement use separate loop histories for the same API key and session ID. Switching to enforcement does not transfer shadow history. Run budgets and spend protection remain shared according to their existing key/run scope.
+Shadow and enforcement use separate loop histories for the same API key and session ID. Switching to enforcement does not transfer shadow history.
+
+Run budgets and spend protection remain shared according to their existing key/run scope.
 
 The timeline labels detections as **[Shadow] Would block**.
 
@@ -281,6 +328,8 @@ Shadow mode can continue beyond the configured step limit while reporting that e
 
 ### Schema-Change Detection — Pro/Team
 
+Inside an open `Guard` context:
+
 ```python
 result = await guard.check(
     session_id=run_id,
@@ -312,11 +361,13 @@ Production configuration can override defaults. Pro and Team support custom roll
 
 ### Per-Run Budgets — Pro/Team
 
-Requires development SDK source containing the budget helper, or direct REST usage.
+Available through SDK **1.1.0** or the REST API.
 
 ```python
 import os
 import uuid
+
+import httpx
 
 from agenttrafficcop import GuardSync
 
@@ -324,19 +375,25 @@ from agenttrafficcop import GuardSync
 run_id = uuid.uuid4().hex
 
 with GuardSync(
-    "https://api.agenttrafficcop.com",
-    os.environ["ATC_API_KEY"],
+    url="https://api.agenttrafficcop.com",
+    api_key=os.environ["ATC_API_KEY"],
+    dry_run=False,
 ) as guard:
-    budget = guard.set_run_budget(
-        session_id=run_id,
-        budget_usd="2.00",
-    )
-    print(budget)
+    try:
+        budget = guard.set_run_budget(
+            session_id=run_id,
+            budget_usd="2.00",
+        )
+    except httpx.HTTPError as exc:
+        print("Could not configure run budget:", exc)
+        raise
+    else:
+        print(budget)
 
     # Use run_id in route checks and trusted cost reports.
 ```
 
-The asynchronous equivalent is:
+The asynchronous equivalent, inside an open `Guard` context, is:
 
 ```python
 budget = await guard.set_run_budget(
@@ -344,6 +401,8 @@ budget = await guard.set_run_budget(
     budget_usd="2.00",
 )
 ```
+
+The budget helper currently exposes HTTPX errors for HTTP or transport failures. Its error handling differs from `guard.check(...)`.
 
 Once reported cumulative spending reaches the budget, subsequent protected checks return:
 
@@ -365,6 +424,8 @@ A trusted backend must report incremental costs to:
 ```text
 POST /v1/ingest/usage
 ```
+
+Example body:
 
 ```json
 {
@@ -397,6 +458,8 @@ timestamp + "." + exact_request_body
 ```
 
 Keep `ATC_INGEST_WEBHOOK_SECRET` on the trusted reporting backend. Never expose it in browser code. A bearer token alone does not authenticate ingestion.
+
+For the hosted service, arrange an authorized reporting integration. An ordinary SDK API key does not grant access to the service's ingestion-signing secret.
 
 The CloudPulse handler supports explicit external-key mapping. A threshold response without a mapping does not establish that an ATC key was blocked. CloudPulse key-level window reports do not currently attribute costs to individual runs.
 
@@ -440,6 +503,12 @@ Older activity is not backfilled. The timeline is not a full execution trace, hi
 
 ### LangGraph
 
+Install the optional dependency:
+
+```bash
+python -m pip install 'agenttrafficcop[langgraph]==1.1.0'
+```
+
 Wrap selected nodes with `guarded_node`:
 
 ```python
@@ -459,21 +528,27 @@ graph.add_node(
 )
 ```
 
-Install a compatible LangGraph version separately or use an available SDK `langgraph` extra.
+This is an integration fragment. It assumes an existing graph, an open compatible guard client, and a `reviewer_fn`.
 
 Only wrapped nodes are protected. Preserve exception propagation so rejected checks prevent execution.
 
-Existing adapters do not automatically enable shadow mode. Explicit adapter wiring or direct guard calls are required.
+Existing adapters do not automatically enable shadow mode. Use direct guard calls when you need explicit `mode="shadow"` behavior.
 
-### Legacy AutoGen — Development Source
+### Legacy AutoGen
 
-Supported version:
+Install the optional integration:
+
+```bash
+python -m pip install 'agenttrafficcop[autogen]==1.1.0'
+```
+
+Supported framework version:
 
 ```text
 pyautogen==0.2.35
 ```
 
-The adapter is implemented in development SDK source and is not yet included in the previously published package.
+Example agent setup:
 
 ```python
 import os
@@ -484,8 +559,9 @@ from agenttrafficcop.autogen import GuardedConversableAgent
 
 
 with GuardSync(
-    "https://api.agenttrafficcop.com",
-    os.environ["ATC_API_KEY"],
+    url="https://api.agenttrafficcop.com",
+    api_key=os.environ["ATC_API_KEY"],
+    dry_run=False,
 ) as guard:
     worker = GuardedConversableAgent(
         "worker",
@@ -496,6 +572,8 @@ with GuardSync(
         code_execution_config=False,
         default_auto_reply="Acknowledged.",
     )
+
+    # Run the supported reply pipeline while the guard is open.
 ```
 
 The adapter checks before supported `generate_reply` and `a_generate_reply` pipelines, including registered reply handlers.
@@ -536,6 +614,8 @@ Omitting `mode` defaults to enforcement.
 
 Approval permits the caller to proceed; it does not execute the action.
 
+Use a new session ID for each independent run.
+
 ### Core Endpoints
 
 | Method | Path | Authentication | Purpose |
@@ -568,9 +648,11 @@ Agent API keys are not automatically administrator credentials.
 
 Rejections can use HTTP **401, 402, 403, 422, or 429**, depending on the failure.
 
-In shadow mode, loop/step detector codes appear inside `shadow_decision` on an HTTP 200 response instead of rejecting the action.
+In shadow mode, loop and step detector codes appear inside `shadow_decision` on an HTTP 200 response instead of rejecting the action.
 
-Catch `AgentTrafficCopError` when a workflow should stop on any SDK check failure—not only loop errors.
+Catch `AgentTrafficCopError` around `guard.check(...)` when a workflow should stop on SDK check failures—not only loop errors.
+
+The current budget helper uses HTTPX exceptions for HTTP and transport failures.
 
 ## Plans and Usage
 
@@ -590,7 +672,7 @@ Catch `AgentTrafficCopError` when a workflow should stop on any SDK check failur
 | Webhook destinations | 1 | 5 | High implementation cap |
 | Listed log retention | 7 days | 30 days | 1 year |
 
-Production configuration can override defaults.
+Production configuration can override defaults. See the [website](https://agenttrafficcop.com) for current commercial terms.
 
 For account-issued keys, usage follows a stable account-anchored **30-day period**, not necessarily a calendar month.
 
@@ -622,9 +704,8 @@ For mandatory enforcement:
 
 The following are roadmap candidates, not currently available features or delivery commitments. Priorities may change based on user feedback.
 
-| Planned capability | Goal |
+| Candidate capability | Goal |
 |---|---|
-| Updated SDK release | Publish development-source budget helpers, legacy AutoGen support, and explicit shadow-mode helpers |
 | Hash-only privacy mode | Evaluate supported checks without submitting raw action payloads |
 | Historical replay and threshold comparison | Compare detector settings against suitable recorded event sequences |
 | Local-first SDK checks | Run selected deterministic loop checks locally |
@@ -638,15 +719,18 @@ Interested in evaluating one of these capabilities? Open an [issue](https://gith
 
 ## Validation
 
-The private backend's shadow-mode change passed:
+SDK 1.1.0 release preparation included:
 
-- **479 tests, with 1 skipped**
-- **11 deployment/content script tests**
-- **Three browser regression scripts**
+- **479 passing regression tests, with 1 skipped**, using the original dependency set.
+- **43 passing SDK and shadow-mode tests** with `httpx 0.28.1`.
+- **Five isolated installed-wheel smoke tests** on each of `httpx 0.27.2` and `0.28.1`.
+- Wheel and source-distribution metadata validation.
+- Archive-content checks to exclude private backend files.
+- An independent wheel rebuild from the source distribution.
 
 The repeated-payload shadow path was also exercised against the hosted API: the detector returned a would-block warning while subsequent checks continued.
 
-These are scoped validation results—not a claim that every public SDK release, customer integration, payment flow, or provider connection has been verified.
+These are scoped validation results—not a claim that every customer integration, payment flow, framework version, or provider connection has been verified.
 
 ## Links
 
@@ -659,3 +743,8 @@ These are scoped validation results—not a claim that every public SDK release,
 ## License
 
 The SDK is licensed under the MIT License. See [LICENSE](LICENSE).
+- [Website](https://agenttrafficcop.com)
+- [Dashboard](https://agenttrafficcop.com/dashboard.html)
+- [Public SDK repository](https://github.com/belalshafeq/AgentTrafficCop-sdk)
+- [Issues and feature requests](https://github.com/belalshafeq/AgentTrafficCop-sdk/issues)
+- [PyPI](https://pypi.org/project/agenttrafficcop/)
