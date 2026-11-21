@@ -2,11 +2,11 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AgentTrafficCop, **please do not open a public issue or publish exploit details**.
+If you discover a security vulnerability in AgentTrafficCop, **do not open a public issue or publish exploit details**.
 
 Email [belalshafeq@gmail.com](mailto:belalshafeq@gmail.com).
 
-I aim to acknowledge reports within **24 hours**, but response and resolution times may vary.
+I aim to acknowledge reports within **24 hours**, but response and resolution times may vary. This is a response target, not a guaranteed service level.
 
 Please include:
 
@@ -17,28 +17,55 @@ Please include:
 
 Do not include real API keys, passwords, verification codes, customer payloads, or other sensitive information. Use test accounts and redact credentials.
 
-Please avoid destructive testing, denial-of-service testing, accessing other users' data, or testing systems you do not control without authorization.
+Please avoid destructive testing, denial-of-service testing, accessing other users' data, or testing systems without authorization.
 
 ## Scope
 
-This public repository distributes the AgentTrafficCop SDK and related documentation.
+This public repository distributes the AgentTrafficCop Python SDK and related documentation.
 
 Security reports may also concern the hosted service at:
 
-- `https://agenttrafficcop.com`
-- `https://api.agenttrafficcop.com`
+- https://agenttrafficcop.com
+- https://api.agenttrafficcop.com
 
-The controls described below include hosted backend behavior. Installing the SDK alone does not provide every server-side control, and self-hosted deployments depend on their configuration and infrastructure.
+The controls below describe SDK and hosted backend behavior where indicated. Installing the SDK alone does not provide every server-side control.
+
+Self-hosted deployments depend on their configuration, deployed version, secrets management, and infrastructure.
+
+Third-party model providers, frameworks, and hosting platforms are outside this project's control. Report vulnerabilities in those systems to their respective maintainers.
 
 ## Security Model
 
-AgentTrafficCop evaluates protected actions before they execute. Applications must check the decision and stop execution when a check fails.
+AgentTrafficCop evaluates submitted actions before an application executes them.
 
-It is not a sandbox and does not automatically intercept every tool, message, or LLM call.
+Applications must place checks at the relevant execution boundaries and honor rejections. AgentTrafficCop is not a sandbox and does not automatically intercept every tool invocation, message, or LLM call.
 
-With enforcement enabled, SDK check failures propagate to the caller. Applications that suppress exceptions, bypass checks, or use dry-run mode can continue execution without enforcement.
+With enforcement enabled and legacy dry-run disabled, SDK check failures propagate to the caller. Applications that suppress errors, bypass checks, or execute actions before checking can continue without enforcement.
 
 AgentTrafficCop cannot undo completed actions or automatically cancel all in-flight operations.
+
+### Shadow Mode
+
+Shadow mode intentionally allows actions that would otherwise be rejected by supported loop and step detectors. These detections are returned as warnings.
+
+Shadow mode does not bypass authentication, request validation, rate limits, message quotas, agent limits, rolling spend blocks, or exhausted run budgets.
+
+For mandatory enforcement:
+
+- Keep legacy `dry_run` disabled.
+- Do not allow untrusted callers to select shadow mode.
+- Prevent execution when a protected check fails.
+- Protect every relevant execution boundary.
+
+Shadow mode and legacy SDK dry-run are different mechanisms.
+
+### Detection Boundaries
+
+Loop detection is deterministic, not a general assessment of intent or safety.
+
+Different payloads can represent similar behavior without triggering exact-repeat detection. Conversely, legitimate repeated actions can trigger configured rules.
+
+AgentTrafficCop does not guarantee detection of malicious instructions, prompt injection, data exfiltration, or every form of agent failure.
 
 ## Implemented Controls
 
@@ -48,11 +75,13 @@ Account-issued API keys are stored as SHA-256 hashes rather than recoverable pla
 
 Shortened fingerprints are used for identification and correlation. Fingerprints are not credentials, and their finite length does not make collisions impossible.
 
-Keep raw API keys private. Server operators who configure keys through environment variables must also secure those environment values.
+Keep raw API keys private. Do not embed them in public repositories, browser code, screenshots, or logs.
+
+Operators who configure keys through environment variables must also secure those values and the systems that can read them.
 
 ### Passwords and Login Sessions
 
-Passwords are hashed using bcrypt. Password inputs are limited to 72 UTF-8 bytes to avoid silent bcrypt truncation.
+Passwords are hashed using bcrypt. Password inputs are limited to **72 UTF-8 bytes** to avoid silent bcrypt truncation.
 
 Login JWTs include a password-version value. The backend checks that value against the current account record, allowing password resets to invalidate older login tokens on subsequent authenticated requests.
 
@@ -73,13 +102,15 @@ The signup flow uses:
 
 Legacy account-verification links remain supported and have a separate expiration policy.
 
-Email verification establishes access to an inbox. It does not establish legal identity or exclude disposable email providers. Expiration and hashing reduce risk but do not make database or application-secret compromise harmless.
+Email verification establishes access to an inbox. It does not establish legal identity or exclude disposable email providers.
+
+Expiration and hashing reduce risk but do not make database or application-secret compromise harmless.
 
 ### Authorization and Tenant Isolation
 
 Protected endpoints require the relevant API-key, account-token, administrator, or webhook authentication.
 
-Dashboard and run-record access checks account or API-key ownership. Reusing another customer's session ID does not grant access to that customer's records.
+Dashboard and run-record access checks account or API-key ownership. Knowing another customer's session ID does not grant access to that customer's records.
 
 Administrative permissions are separate from ordinary agent API-key access.
 
@@ -91,13 +122,23 @@ Generic usage ingestion requires a timestamped HMAC signature over the exact req
 
 Spend ingestion includes event deduplication. Deduplication scope and retention depend on the reporting path.
 
-Signature validation authenticates the reporting source; it does not independently prove that reported costs are accurate. Keep reporting secrets on trusted backend systems, not in browser code.
+Signature validation authenticates the reporting source; it does not independently prove that reported costs are accurate.
+
+Keep reporting secrets on trusted backend systems, not in browser code. Ordinary customer API keys do not grant access to the hosted service's ingestion-signing secret.
+
+### Spending Protection Boundaries
+
+Spending controls evaluate reported usage. They do not automatically connect to provider billing or impose a provider-side hard spending cap.
+
+Missing or delayed reports, parallel execution, and in-flight calls can cause spending to exceed a configured threshold.
+
+Applications must connect an authorized reporting path and honor subsequent rejections.
 
 ### Outbound Webhooks
 
 Outbound webhook URLs are checked against restricted destinations, and HTTP redirects are disabled.
 
-These checks reduce SSRF exposure but are not a substitute for infrastructure-level egress restrictions or a guarantee against every DNS and network-resolution attack.
+These checks reduce server-side request forgery exposure. They are not a substitute for infrastructure-level egress restrictions or a guarantee against every DNS and network-resolution attack.
 
 Webhook notifications are best effort, not a guaranteed-delivery security channel.
 
@@ -111,7 +152,7 @@ Without a shared limiter, limits are not globally coordinated across multiple wo
 
 ### Request Validation and Resource Limits
 
-The server validates request schemas and enforces a configurable request-body limit, defaulting to 1 MiB.
+The server validates request schemas and enforces a configurable request-body limit, defaulting to **1 MiB**.
 
 Deeply nested payloads that cannot be safely processed are rejected. Session histories and selected in-memory caches are bounded.
 
@@ -125,6 +166,75 @@ These settings do not guarantee freedom from lock errors, corruption, storage ex
 
 SQLite-backed records require persistent storage to survive container replacement. Operators are responsible for access controls, capacity monitoring, backups, and tested restoration procedures.
 
-Monthly usage counters are separate from active loop-detection history. Without Redis, active loop history remains process-local and is lost on restart.
+Account usage counters are separate from active loop-detection history. Without Redis, active loop history remains process-local, does not span independent workers, and is lost on restart.
 
-### Incident Evidence 
+Persistent incident records do not restore active detector history.
+
+### Incident Evidence and Privacy
+
+Incident timelines record selected decision evidence, including identifiers, timestamps, payload hashes, detector explanations, and bounded diagnostics.
+
+Timeline records do not store raw action payloads or request metadata. However, normal route checks still submit payloads to the server for validation and hashing.
+
+This is not a hash-only API or an end-to-end encryption guarantee.
+
+Hashes reveal equality and are not anonymization. Sensitive or predictable values may remain vulnerable to inference.
+
+Keep secrets and personal information out of agent names, session IDs, and other identifiers.
+
+Recorded evidence is bounded to:
+
+- The latest 200 recorded checks per run.
+- Up to 10,000 recorded checks per API key.
+- The applicable plan's time-based retention.
+
+These are upper bounds, not a promise that every event will remain available for the full retention period.
+
+The timeline is not a complete execution trace, an immutable audit log, or a historical replay system.
+
+## Framework Integrations
+
+Framework adapters protect only their documented execution paths.
+
+The legacy AutoGen adapter targets `pyautogen==0.2.35`. It does not support modern AutoGen, AgentChat, or AG2.
+
+Direct tool calls, direct sends, unwrapped nodes, and execution outside guarded methods may bypass adapter checks.
+
+Adapters do not automatically provide:
+
+- A code-execution sandbox.
+- Provider cost reporting.
+- Protection for every framework operation.
+- Cancellation of work already in progress.
+
+Review integration boundaries before relying on an adapter for enforcement.
+
+## Deployment Responsibilities
+
+For self-hosted deployments:
+
+- Use HTTPS for externally accessible services.
+- Protect application, JWT, billing, and ingestion secrets.
+- Restrict administrator access.
+- Configure trusted proxy handling for your infrastructure.
+- Use persistent storage and test backup restoration.
+- Monitor storage capacity, authentication failures, and ingestion failures.
+- Use shared state where multi-worker coordination is required.
+- Keep Python, dependencies, and container images updated.
+- Avoid logging credentials or sensitive payloads.
+
+The presence of application-level controls does not replace secure infrastructure configuration.
+
+## Updates and Disclosure
+
+Use the latest published SDK release compatible with your application, and review release notes before upgrading.
+
+This policy does not promise security backports for every older release or third-party framework version.
+
+Please coordinate public disclosure so that affected users have a reasonable opportunity to apply a fix or mitigation. Disclosure timing will depend on severity, exploitability, and remediation progress.
+
+## Limitations
+
+The controls described here are not a compliance certification, independent security audit, or guarantee against every attack.
+
+Security depends on the deployed version, configuration, infrastructure, reporting integrations, and how applications handle guard decisions.
