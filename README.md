@@ -20,6 +20,8 @@ Start in **shadow mode** to observe detector decisions without blocking for thos
 - **Cycle detection** — detect repeating payload sequences within configured cycle bounds.
 - **Step limits** — limit approved actions in an enforcement session.
 - **Strict message validation** — validate submitted handoff fields against the server-side request contract.
+- **Hash-only payload mode** — submit a locally calculated SHA-256 hash instead of raw action contents. Requires a compatible backend. The Python SDK helper
+  is implemented in development source but is not included in SDK 1.1.0.
 - **Schema-change detection — Pro/Team** — flag three consecutive different submitted tool-schema hashes.
 - **Rolling spend protection** — evaluate reported costs over a 60-second window.
 - **Per-run budgets — Pro/Team** — reject subsequent protected actions when reported cumulative run spending reaches its budget.
@@ -162,6 +164,141 @@ with GuardSync(
 ```
 
 Creating a client alone does not hook into a framework. Call it at the execution boundary or use a supported adapter.
+
+## Hash-Only Payload Mode
+
+Hash-only mode lets your application submit an action's SHA-256 hash instead
+of sending its raw payload to AgentTrafficCop.
+
+**Availability:** implemented in development source. Confirm that your backend
+deployment supports this request format before using it. Published Python SDK
+1.1.0 does not include the `hash_only=True` helper.
+
+### REST Usage
+
+Calculate the hash locally, then submit it to the API:
+
+```python
+import getpass
+import hashlib
+import json
+import urllib.request
+import uuid
+
+api_key = getpass.getpass("AgentTrafficCop API key: ")
+
+payload = {
+    "task": "review account",
+    "private_content": "This stays in your application.",
+}
+
+canonical = json.dumps(
+    payload,
+    sort_keys=True,
+    separators=(",", ":"),
+    ensure_ascii=False,
+    allow_nan=False,
+)
+
+digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+body = {
+    "session_id": uuid.uuid4().hex,
+    "sender": "planner",
+    "recipient": "worker",
+    "intent": "handoff",
+    "payload_mode": "hash_only",
+    "payload_hash": digest,
+    "mode": "enforce",
+}
+
+request = urllib.request.Request(
+    "https://api.agenttrafficcop.com/v1/route",
+    data=json.dumps(body).encode("utf-8"),
+    headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    },
+    method="POST",
+)
+
+# A rejection raises HTTPError. Do not execute the action after a failed check.
+with urllib.request.urlopen(request, timeout=30) as response:
+    result = json.load(response)
+
+if result.get("approved") is True:
+    # Execute the protected action here.
+    print("Approved")
+```
+
+Reuse the same session ID for subsequent checks in that run.
+
+### Python SDK — Unreleased Helper
+
+Development source supports the following inside an open `Guard` context:
+
+```python
+result = await guard.check(
+    session_id=run_id,
+    sender="planner",
+    recipient="worker",
+    payload={"task": "review account", "private_content": "stays local"},
+    hash_only=True,
+)
+```
+
+`GuardSync.check(...)` supports the same option without `await`.
+
+Do not use this argument with published SDK 1.1.0. Installing that version does
+not provide the helper.
+
+The helper hashes the payload locally and omits it from the outgoing request.
+It rejects metadata in hash-only mode and does not automatically fall back to
+sending raw contents if the server rejects the request.
+
+### Request Rules
+
+- Set `payload_mode` to `"hash_only"`.
+- Supply `payload_hash` as exactly 64 lowercase hexadecimal characters.
+- Omit `payload` and `metadata` entirely—even null values are rejected.
+- Continue supplying the required session, sender, recipient and intent fields.
+- Use `mode="shadow"` separately if you want shadow evaluation.
+- Raw payload requests remain the default.
+
+### Supported Protections
+
+Hash-only requests retain:
+
+- Exact-repeat and repeating-cycle detection.
+- Step limits.
+- Schema-change detection when a separate schema hash is supplied on an
+  eligible plan.
+- Authentication, request-envelope validation, rate limits and usage quotas.
+- Reported-spend protection and per-run budgets.
+- Shadow-mode decisions and incident timelines.
+
+Raw and hash-only requests share detector history for the same API key,
+session and enforcement/shadow mode. Matching payload hashes remain matching
+when you change representation.
+
+### Privacy and Limitations
+
+The server cannot validate the original payload's contents or verify that the
+submitted hash matches the action actually executed. Use a trusted integration.
+
+Hashes reveal equality and are not anonymization or encryption. Predictable
+payloads can be guessed. Agent names, session IDs, intent and submitted hashes
+still leave your application.
+
+Changing timestamps, random IDs or other payload fields changes the hash.
+These fields are not automatically removed.
+
+Cross-language clients must match the documented serialization to produce the
+same digest. This is not an RFC 8785 canonicalization implementation.
+
+Framework adapters do not automatically enable hash-only mode. Spending
+protection still requires trusted cost reporting, and applications must honor
+rejections.
 
 ## Shadow Mode
 
@@ -706,7 +843,6 @@ The following are roadmap candidates, not currently available features or delive
 
 | Candidate capability | Goal |
 |---|---|
-| Hash-only privacy mode | Evaluate supported checks without submitting raw action payloads |
 | Historical replay and threshold comparison | Compare detector settings against suitable recorded event sequences |
 | Local-first SDK checks | Run selected deterministic loop checks locally |
 | Explicit outage policies | Configure availability behavior separately for loop and spend protections |
