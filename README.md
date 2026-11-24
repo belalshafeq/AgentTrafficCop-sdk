@@ -335,6 +335,7 @@ import urllib.request
 import uuid
 
 api_key = getpass.getpass("AgentTrafficCop API key: ")
+run_id = uuid.uuid4().hex
 
 payload = {
     "task": "review account",
@@ -352,7 +353,7 @@ canonical = json.dumps(
 digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 body = {
-    "session_id": uuid.uuid4().hex,
+    "session_id": run_id,
     "sender": "planner",
     "recipient": "worker",
     "intent": "handoff",
@@ -371,7 +372,8 @@ request = urllib.request.Request(
     method="POST",
 )
 
-# A rejection raises HTTPError. Do not execute after a failed check.
+# HTTP failures raise HTTPError; transport failures may raise URLError.
+# Do not execute after a failed check.
 with urllib.request.urlopen(request, timeout=30) as response:
     result = json.load(response)
 
@@ -380,7 +382,7 @@ if result.get("approved") is True:
     print("Approved")
 ```
 
-Reuse that run's session ID in subsequent checks.
+Reuse `run_id` in subsequent checks for that run.
 
 ### Request Rules
 
@@ -511,6 +513,7 @@ It does **not** bypass:
 - Message or agent quotas
 - Rolling spend blocks
 - Exhausted run budgets
+- Session-coordination failures
 
 Approved shadow checks consume normal message quota. Detector warnings do not send alerts claiming that the workflow was halted.
 
@@ -551,7 +554,7 @@ A step counts an approved check, not a verified execution.
 - `LocalGuard` defaults to **50 approved checks per session**.
 - Hosted enforcement defaults to **25 approved checks per session**, subject to server configuration and eligible custom settings.
 
-Rejected checks do not increment the approved-step count.
+Policy-rejected checks do not increment the approved-step count. Infrastructure failures can leave an ambiguous outcome if recording succeeded but the response did not reach the client.
 
 Hosted shadow mode can continue past the configured step limit while reporting a would-block warning.
 
@@ -875,15 +878,27 @@ Agent API keys are not automatically administrator credentials.
 | `TIER_LIMIT_EXCEEDED` | Account message allowance reached |
 | `AGENT_LIMIT_EXCEEDED` | Tracked-agent allowance reached |
 
-Hosted failures can use HTTP **401, 402, 403, 422, or 429**, depending on the failure.
+Common hosted failure responses include HTTP **401, 402, 403, 413, 422, 429, and 503**, depending on the failure. Other server or transport failures are also possible.
 
-In shadow mode, supported detector codes appear in `shadow_decision` on an HTTP 200 approval rather than rejecting the action.
+### Session Coordination Failures — HTTP 503
+
+The backend can return **503 Service Unavailable** when session coordination is unavailable, the session remains busy beyond the acquisition wait, or a coordination lease expires before a protected write.
+
+These are failed checks—not detector approvals. They may use an HTTP error detail rather than one of the detector codes above.
+
+**Do not execute the protected action after a 503 or any other failed check.**
+
+In shadow mode, supported detector codes appear in `shadow_decision` on an HTTP 200 approval rather than rejecting the action. Coordination and infrastructure failures are not converted into shadow approvals.
+
+### SDK Error Handling
 
 Catch `AgentTrafficCopError` around hosted `guard.check(...)` calls when check failures should stop the workflow—not only loop-specific exceptions.
 
 Budget helpers currently use HTTPX exceptions for HTTP and transport failures.
 
 For local checks, inspect `LocalResult.approved` and `LocalResult.reason`; invalid local inputs raise `ValueError`.
+
+A timeout or failed response is not proof that the server recorded nothing. Do not assume retries are idempotent or reset history to work around a failure.
 
 ## Hosted Plans and Usage
 
@@ -913,7 +928,9 @@ For account-issued keys, usage follows a stable account-anchored **30-day period
 
 Message usage and tracked-agent membership are shared across the account's keys. Creating or rotating a key does not create a fresh account quota.
 
-Approved shadow checks consume message quota. Rejected checks do not increment approved-message usage but remain subject to relevant rate limits.
+Approved shadow checks consume message quota. Policy-rejected checks do not consume approved-message quota, but remain subject to relevant rate limits.
+
+Some crash or ambiguous storage-failure cases can retain a conservative message-quota charge even when the client receives no approval. Quota admission and detector-history storage are not one cross-store transaction.
 
 Run budgets and timelines are **API key + session scoped**, unlike account-wide message usage.
 
@@ -933,7 +950,16 @@ The hosted application includes authenticated endpoints, hashed API-key storage,
 
 These controls are not a compliance certification or a guarantee against every attack.
 
-Usage and run records require persistent storage to survive restarts. Without Redis, active hosted loop history is process-local, does not span independent workers, and is lost on restart. Persistent timeline records do not restore active detector history.
+Hosted session evaluation, quota admission, and history recording are coordinated to prevent simultaneous requests for the same session from independently approving against stale history.
+
+- **Memory-backed history** remains process-local. Decisions use the backend's shared lock, which also coordinates reset and eviction. This can serialize unrelated sessions.
+- **Redis-backed history** uses per-session coordination and token-fenced writes. A worker whose lease expired cannot commit a stale history update.
+- Participating workers must use a compatible backend version and shared configuration. Old writers that do not honor coordination must be drained or stopped during rollout.
+- Session coordination does not make quota storage, detector history, and incident logging one atomic transaction.
+
+Blocking route work runs through a bounded worker pool. This improves event-loop responsiveness but does not guarantee a particular throughput or eliminate database contention.
+
+Usage and run records require persistent storage to survive restarts. Without Redis, active hosted loop history does not span independent workers and is lost on restart. Persistent timeline records do not restore active detector history.
 
 Webhook alerts are best-effort notifications—not a guaranteed-delivery incident queue.
 
@@ -942,11 +968,12 @@ Webhook alerts are best-effort notifications—not a guaranteed-delivery inciden
 - Guard every relevant execution boundary.
 - Reuse the intended guard instance and stable run ID.
 - Execute only after approval.
-- Stop on a rejected or failed check.
+- Stop on a rejected or failed check, including timeouts and HTTP 503 responses.
 - Keep hosted legacy `dry_run` disabled.
 - Prevent untrusted callers from bypassing checks, changing policy modes, or resetting history.
 - Connect and monitor trusted cost reporting when using hosted spending controls.
 - Account for the documented restart, expiry, and multi-worker boundaries.
+- Do not treat a failed response as proof that no history or quota update occurred.
 
 ## Roadmap Candidates
 
@@ -981,15 +1008,18 @@ SDK 1.3.0 validation included:
 
 A separate user-run Colab verification using the published 1.3.0 package also passed repeat, cycle, step-limit, session-isolation, reset, and concurrent-check tests while socket connections were blocked.
 
+These figures describe SDK 1.3.0 release validation, not the current backend test-suite total.
+
 These are scoped validation results—not proof that every customer integration, framework version, payment flow, or provider connection has been verified.
 
 ## Links
 
-- [Website](https://agenttrafficcop.com)
+- [Website and current plans](https://agenttrafficcop.com)
 - [Dashboard](https://agenttrafficcop.com/dashboard.html)
-- [Public SDK repository](https://github.com/belalshafeq/AgentTrafficCop-sdk)
+- [PyPI package](https://pypi.org/project/agenttrafficcop/)
+- [SDK repository](https://github.com/belalshafeq/AgentTrafficCop-sdk)
 - [Issues and feature requests](https://github.com/belalshafeq/AgentTrafficCop-sdk/issues)
-- [PyPI](https://pypi.org/project/agenttrafficcop/)
+- - [PyPI](https://pypi.org/project/agenttrafficcop/)
 
 ## License
 
