@@ -5,7 +5,7 @@
 
 **Check the next agent action before it runs.**
 
-AgentTrafficCop helps detect repeated actions, repeating cycles, and excessive steps in agent workflows. Use local checks without a network connection, or hosted checks for coordinated decisions, incident timelines, and reported-spending controls.
+AgentTrafficCop helps detect repeated actions, repeating cycles, and excessive steps in agent workflows. Choose offline local checks or hosted checks with incident timelines, usage quotas, and reported-spending controls.
 
 Your application must honor the result. Installing the SDK does not automatically protect every model or tool call.
 
@@ -17,7 +17,7 @@ Requires **Python 3.11+**.
 python -m pip install --upgrade 'agenttrafficcop==1.6.0'
 ```
 
-Check the installed version:
+Check your installed version:
 
 ```bash
 python -c "from importlib.metadata import version; print(version('agenttrafficcop'))"
@@ -27,23 +27,24 @@ Base dependency: `httpx>=0.27.0,<0.29.0`. Optional framework integrations have a
 
 ## Choose Your Integration
 
-| Option | Best for | Important boundary |
+| Option | Use it for | Important boundary |
 |---|---|---|
-| `LocalGuard` | Offline repeat, cycle, and step checks | History stays in one guard instance |
+| `LocalGuard` | Offline exact-repeat, cycle, and step checks | History belongs to one guard instance |
 | `GuardRuntime` | Unified sync/async checks, optional policies, and execution helpers | Requires the hosted API |
 | `Guard` / `GuardSync` | Direct async/sync hosted clients | You manage the client lifecycle |
 
-### Main Capabilities
+### Capabilities
 
-- **Deterministic checks:** exact repeats, repeating sequences, and approved-step limits.
-- **Payload normalization:** explicit field exclusions; optional scoped metadata normalization through `GuardRuntime`.
+- **Deterministic detection:** exact repeats, repeating sequences, and approved-step limits.
+- **Payload normalization:** explicit field exclusions and an optional scoped metadata preset.
 - **Semantic policies:** experimental warnings or opt-in blocking using your embedding encoder.
-- **Hosted controls:** shadow mode, bounded timelines, threshold comparisons, and owner-reviewed one-action continuation.
-- **Spending controls:** report-driven limits and Pro/Team estimated-cost reservations.
+- **Hosted evidence:** bounded timelines, threshold comparison, and client-reported semantic observations.
+- **Human review:** owner-authorized, one-action continuation without clearing detector history.
+- **Spending controls:** report-driven limits, run budgets, and estimated-cost reservations.
 - **Usage accounting:** configured-price adapters for supported non-streaming OpenAI and Anthropic token usage.
-- **Integration hooks:** supported LangGraph, CrewAI, current AutoGen, and MCP tool-call paths.
+- **Framework hooks:** supported LangGraph, CrewAI, current AutoGen, and MCP execution paths.
 
-These features are not all enabled automatically. See the examples and boundaries below.
+Advanced policies and integrations require explicit configuration. They are not enabled merely by installing the SDK.
 
 ## Quick Start: Local Checks
 
@@ -78,49 +79,50 @@ Approved step 2
 Action not executed: REPEATED_PAYLOAD_LOOP
 ```
 
-Reuse the **same guard instance and session ID** throughout a run. Creating a new guard or changing the session ID starts independent history.
+Reuse the **same guard instance and session ID** throughout a run. A new guard or session ID starts independent history.
 
 ### Local Configuration
 
-| Option | Default |
-|---|---:|
-| `max_repeats` | `3` |
-| `max_steps` | `50` |
-| `max_cycle_length` | `2` |
-| `max_cycle_repeats` | `3` |
-| `max_sessions` | `1000` |
-| `session_ttl` | `3600` seconds |
-| `ignore_paths` | No exclusions |
+| Option | Default | Purpose |
+|---|---:|---|
+| `max_repeats` | `3` | Consecutive identical-action threshold |
+| `max_steps` | `50` | Maximum approved checks per session |
+| `max_cycle_length` | `2` | Largest repeating sequence checked |
+| `max_cycle_repeats` | `3` | Sequence repetitions that trigger rejection |
+| `max_sessions` | `1000` | Maximum retained, unexpired sessions |
+| `session_ttl` | `3600` seconds | Inactivity expiry |
+| `ignore_paths` | No exclusions | Explicit fields omitted before hashing |
 
-`check()` returns a `LocalResult` containing `approved`, `session_id`, `step`, `payload_hash`, and `reason`.
+`check()` returns a `LocalResult` with:
 
-Rejection reasons:
+- `approved`
+- `session_id`
+- `step`
+- `payload_hash`
+- `reason`
 
-- `REPEATED_PAYLOAD_LOOP`
-- `CYCLIC_PAYLOAD_LOOP`
-- `STEP_LIMIT_EXCEEDED`
-- `LOCAL_CAPACITY_EXCEEDED`
+Local rejection codes are `REPEATED_PAYLOAD_LOOP`, `CYCLIC_PAYLOAD_LOOP`, `STEP_LIMIT_EXCEEDED`, and `LOCAL_CAPACITY_EXCEEDED`.
 
 Invalid inputs raise `ValueError`. Do not execute after a rejected or failed check.
 
 **Local boundaries:**
 
-- History is thread-safe within one instance, but not shared across instances or processes.
+- Checks are atomic and thread-safe within one instance.
+- Separate instances and processes do not share history.
 - Restart, inactivity expiry, or `guard.reset(session_id)` removes history.
 - New sessions are rejected at capacity rather than evicting active protection.
-- Local checks do not enforce hosted quotas or spending controls.
-- An approved step records a check—not proof that an action executed.
+- Local checks do not enforce hosted quotas, schema-change rules, or spending controls.
+- Approved steps count checks—not verified executions.
 
 ## Quick Start: Hosted Checks
 
-1. Create an account and generate a key at the [dashboard](https://agenttrafficcop.com/dashboard.html).
-2. Store the key in your environment:
+Create an account and generate an API key at the [dashboard](https://agenttrafficcop.com/dashboard.html).
 
 ```bash
 export ATC_API_KEY="your-api-key"
 ```
 
-3. Check immediately before execution:
+Check immediately before execution:
 
 ```python
 import os
@@ -140,7 +142,10 @@ try:
         session_id=run_id,
         sender="planner",
         recipient="search",
-        payload={"tool": "search", "arguments": {"query": "refund policy"}},
+        payload={
+            "tool": "search",
+            "arguments": {"query": "refund policy"},
+        },
     )
 except AgentTrafficCopError as exc:
     print("Action not executed:", exc.error_code)
@@ -152,7 +157,7 @@ else:
 
 Reuse `run_id` for subsequent checks in that run.
 
-For async applications, use the same runtime:
+For async applications:
 
 ```python
 decision = await runtime.acheck(
@@ -163,18 +168,20 @@ decision = await runtime.acheck(
 )
 ```
 
-`GuardRuntime` manages short-lived HTTP clients for each call. Use `acheck()` inside an event loop.
+`GuardRuntime` creates and closes a client per call. Use `acheck()` inside an event loop.
 
 ### Direct Hosted Clients
 
 For explicit lifecycle management and connection reuse:
 
 ```python
+import os
+
 from agenttrafficcop import GuardSync
 
 with GuardSync(
     url="https://api.agenttrafficcop.com",
-    api_key="YOUR_API_KEY",
+    api_key=os.environ["ATC_API_KEY"],
     dry_run=False,
 ) as guard:
     result = guard.check(
@@ -194,15 +201,17 @@ The async equivalent is `async with Guard(...)` and `await guard.check(...)`.
 
 ## Payload Identity and Privacy
 
-Exact-repeat checks depend on the fields included in the action hash. Changing timestamps or request IDs can hide repeats; removing meaningful arguments can merge different actions.
+Exact-repeat detection depends on the fields included in the hash. Changing timestamps or request IDs can hide repeats; excluding meaningful arguments can make distinct actions appear identical.
 
 ### Explicit Field Exclusions
+
+Local:
 
 ```python
 guard = LocalGuard(ignore_paths=["/timestamp", "/request/id"])
 ```
 
-For direct hosted clients:
+Inside an open hosted `Guard` context:
 
 ```python
 result = await guard.check(
@@ -215,9 +224,9 @@ result = await guard.check(
 )
 ```
 
-Paths are explicit JSON pointers through objects—not array selectors or wildcards. The original action is not modified.
+Paths are JSON pointers through objects—not array selectors or wildcards. The original action is not modified.
 
-### Optional Runtime Metadata Preset
+### Optional Metadata Preset
 
 ```python
 runtime = GuardRuntime(
@@ -227,22 +236,22 @@ runtime = GuardRuntime(
 )
 ```
 
-This removes `timestamp`, `request_id`, and `trace_id` at the payload root and directly inside its root `metadata` object.
+This removes exact-case `timestamp`, `request_id`, and `trace_id` fields at the payload root and directly inside its root `metadata` object.
 
-It is **off by default**, requires hash-only mode, and does not recursively strip tool arguments or arrays. Review your schema before enabling it.
+It is **off by default**, requires hash-only mode, and does not recursively strip tool arguments or arrays. Review your action schema before enabling it.
 
 ### Hash-Only Mode
 
 - `GuardRuntime` defaults to hash-only checks.
 - Direct `Guard` and `GuardSync` checks default to raw payload transmission.
-- Hash-only requests omit raw payloads and reject request metadata.
-- Hashes, session IDs, routing fields, and agent names still reach the server.
-- Hashes reveal equality and are not encryption or guaranteed anonymization.
+- Hash-only requests omit raw payloads and reject separate request metadata.
+- Hashes, session IDs, agent names, and routing fields still reach the server.
+- Hashes reveal equality; they are not encryption or guaranteed anonymization.
 - The server cannot prove that a submitted hash matches the action eventually executed.
 
 ## Experimental Semantic Policies
 
-Deterministic checks compare hashes—not meaning. To detect potentially similar or paraphrased actions, supply an embedding encoder:
+Deterministic checks compare hashes—not meaning. Supply an embedding encoder to identify potentially similar or paraphrased attempts:
 
 ```python
 from agenttrafficcop import GuardRuntime, SemanticMonitor
@@ -269,24 +278,22 @@ decision = runtime.check(
 )
 ```
 
-**Important:**
-
 - No embedding model is bundled or downloaded automatically.
-- Your encoder may transmit text externally.
-- Semantic history is bounded, process-local, and tracks attempted checks—not confirmed executions.
+- Your encoder may transmit text externally and incur separate charges.
+- History is bounded, process-local, and tracks attempted checks—not confirmed executions.
 - False positives and missed loops are possible.
 - Block mode stops on a semantic warning or unavailable monitoring.
 - Optional hosted evidence is labelled **client-reported**, not a verified hosted decision.
 
-Evaluate your encoder and thresholds against your own workflows before enabling blocking.
+Semantic policies have **no paid-plan gate**, but hosted checks still use the applicable account allowances.
 
 ## Outage Behavior
 
 Hosted checks **fail closed by default**.
 
-`OutagePolicy` supports up to two connection-establishment retries and an optional redacted synchronous event callback. Ambiguous read/write failures and HTTP errors are not automatically retried.
+`OutagePolicy` supports up to two connection-establishment retries and an optional redacted synchronous failure callback. Ambiguous read/write failures and HTTP errors are not automatically retried.
 
-`GuardRuntime` also supports explicit connection-only fail-open:
+Explicit connection-only fail-open is available through `GuardRuntime`:
 
 ```python
 runtime = GuardRuntime(
@@ -306,19 +313,20 @@ degraded=True
 
 This is **not a hosted approval**. Hosted spending, quota, and history protections are unavailable during that continuation.
 
-Fail-open does not bypass HTTP rejections, ambiguous delivery errors, semantic blocks, or authentication failures. Reserved execution helpers require an actual hosted approval.
+Fail-open does not bypass HTTP rejections, ambiguous delivery errors, semantic blocks, or authentication failures. Reserved execution requires an actual hosted approval.
 
-## Spending Controls
+## Spending Controls and Accounting
 
-Hosted spending protection uses **trusted reported costs**. Setting a budget does not connect provider billing.
+Hosted spending protection evaluates **trusted reported costs**. Setting a budget does not connect provider billing.
 
 | Control | Scope | Availability |
 |---|---|---|
-| Rolling reported-spend threshold | API key | All hosted tiers |
+| Default rolling reported-spend threshold | API key | All hosted tiers |
+| Custom rolling spend threshold | API key | Pro/Team |
 | Cumulative run budget | API key + session | Pro/Team |
 | Estimated-cost reservations | API key + session | Pro/Team |
 
-### Set a Run Budget
+### Run Budgets
 
 Inside an open `GuardSync` context:
 
@@ -331,11 +339,11 @@ budget = guard.set_run_budget(
 
 Async clients support `await guard.set_run_budget(...)`.
 
-Updating a budget preserves reported spending. Budgets do not reset monthly; use a new session ID for an independent run.
+Changing a budget preserves accumulated spending. Budgets do not reset monthly; use a new session ID for an independent run.
 
-### Reservations and Usage Accounting
+### Reserved Execution
 
-SDK 1.6.0 adds helpers to:
+`GuardRuntime.execute(...)` and `aexecute(...)` can:
 
 1. Check the action.
 2. Reserve estimated spending before execution.
@@ -343,25 +351,32 @@ SDK 1.6.0 adds helpers to:
 4. Execute the supplied callable once.
 5. Extract supported usage and submit trusted final-cost settlement.
 
-Unused estimated budget is released through settlement. Unknown execution outcomes, cancellation, missing usage, or failed reports leave holds unresolved.
+Settlement releases unused estimated budget. Unknown execution outcomes, cancellation, missing usage, or failed reports leave holds unresolved.
 
-Usage adapters support configured-price, **non-streaming text-token usage** from OpenAI and Anthropic. They do not automatically cover every provider charge, streaming response, audio charge, discount, or service tier.
+Persist stable operation IDs in your application ledger. Never treat a duplicate reservation as permission to execute again.
 
-> Reservations are not guaranteed hard spending caps. Underestimated costs and unreserved calls can exceed a budget.
+### Usage Accounting
 
-### Trusted Reporting
+`UsageAccountant` extracts supported **non-streaming text-token usage** from OpenAI and Anthropic responses using caller-configured prices for exact model names.
 
-Cost ingestion requires timestamped HMAC authentication. An ordinary API key does not grant the operator signing secret.
+These SDK helpers have no paid-tier gate. However:
 
-Keep signing secrets on a trusted reporting backend—never in browser code or an untrusted agent.
+- Hosted signed ingestion requires an authorized reporting integration.
+- Reservation-based execution requires Pro/Team.
+- Streaming, audio, tool fees, discounts, and other billing variations may require custom handling.
+- Missing usage or unknown pricing is not silently reported as zero.
 
-If reporting fails after execution, retry the **same cost report**, not the provider action. Keep stable operation and event IDs in a durable application ledger.
+Keep ingestion-signing secrets on a trusted backend—never in browser code or an untrusted agent.
+
+If reporting fails after execution, retry the **same cost report**, not the provider action.
+
+> Report-driven controls and estimated reservations are not guaranteed hard spending caps. Delayed reports, underestimated costs, and unreserved calls can cause overshoot.
 
 ## Framework and MCP Hooks
 
-Installing the SDK does not instrument your application automatically. Register the tools or nodes you want protected.
+Register the nodes or tools you want protected:
 
-| Integration | SDK helper | Tested version |
+| Integration | Helper | Tested version |
 |---|---|---|
 | LangGraph | `guard_langgraph` | `1.2.24` |
 | CrewAI | `guard_crewai_tools` | `1.15.45` |
@@ -369,7 +384,7 @@ Installing the SDK does not instrument your application automatically. Register 
 | MCP | `runtime.mcp_client(...)` | `1.30.0` |
 | Generic callables | `runtime.wrap(...)` / `guard_functions` | Sync/async, non-streaming |
 
-Optional installation examples:
+Optional installations:
 
 ```bash
 python -m pip install 'agenttrafficcop[langgraph]==1.6.0'
@@ -378,7 +393,7 @@ python -m pip install 'agenttrafficcop[autogen-agentchat]==1.6.0'
 python -m pip install 'agenttrafficcop[mcp]==1.6.0'
 ```
 
-Only registered paths are protected. Unsupported node types, streaming paths, existing unwrapped nodes, and direct calls outside the hooks are not automatically covered.
+Only registered execution paths are protected. Existing unwrapped nodes, unsupported node types, streaming paths, and direct calls outside the hooks are not automatically covered.
 
 The separate legacy AutoGen adapter supports `pyautogen==0.2.35`; it is not interchangeable with current AgentChat or AG2.
 
@@ -389,9 +404,9 @@ The separate legacy AutoGen adapter supports `pyautogen==0.2.35`; it is not inte
 Direct hosted clients accept `mode="shadow"` to return supported detector warnings without blocking those actions.
 
 - Approved shadow checks consume message quota.
-- Authentication, budgets, quotas, and coordination failures still reject.
+- Authentication, spending, quotas, and coordination failures still reject.
 - Shadow and enforcement histories are separate.
-- Legacy `dry_run=True` is not equivalent to server-side shadow evaluation.
+- Legacy `dry_run=True` is not server-side shadow evaluation.
 
 Use shadow mode only when continuing past detector warnings is acceptable.
 
@@ -399,73 +414,119 @@ Use shadow mode only when continuing past detector warnings is acceptable.
 
 Account owners can review eligible repeat, cycle, or step-limit blocks in the dashboard and approve one retry of the exact action.
 
-Approvals expire, require unchanged detector history, preserve that history, and do not bypass other rules, budgets, quotas, or authentication. Review does not execute the action.
+Approvals expire, require unchanged detector history, and preserve that history. They do not bypass other rules, authentication, quotas, or spending controls.
 
-### Timelines and Replay
+Review does not execute the action; your application must retry its check.
 
-Open **Dashboard → Recent Sessions → Inspect run** to inspect recorded decisions, rule explanations, hashes, and bounded diagnostics.
+### Timelines and Threshold Comparison
 
-Threshold comparison evaluates the retained deterministic sequence without rerunning tools or changing live settings. Optional semantic evidence is shown for reference—it is not recomputed semantic replay.
+Open **Dashboard → Recent Sessions → Inspect run** to inspect recorded decisions, hashes, triggered rules, and bounded diagnostics.
 
-Evidence is bounded to the latest **200 records per run**, up to **10,000 per key**, within plan retention. It is not a complete execution trace or proof of savings.
+Threshold comparison evaluates retained deterministic sequences without rerunning tools or changing live settings. Semantic observations are reference evidence—not recomputed semantic replay.
 
-## History and Deployment
+Timeline evidence is limited to:
 
-- **LocalGuard:** in-memory history within one instance.
-- **Memory-backed hosted state:** process-local and lost on restart.
-- **Redis-backed hosted state:** shared across compatible workers, subject to Redis persistence and expiry configuration.
-- **Timelines and spending records:** require their own persistent database storage.
-- **SemanticMonitor:** local embedding memory, not shared by hosted Redis.
+- The latest **200 records per run**
+- Up to **10,000 records per API key**
+- The applicable plan’s retention period
 
-Persistent timelines do not restore active detector history.
+It is not a complete execution trace or proof of savings.
 
-The server supports `ATC_REQUIRE_SHARED_STATE=true` to refuse startup without reachable Redis. This checks connectivity—not disk durability or backups. Production Redis must still be configured and verified by the operator.
+## Plans and Feature Availability
 
-## Hosted Plans
+Local checks require no hosted account and consume no hosted quota.
 
-Local checks require no account and consume no hosted quota.
+### Hosted Allowances
 
-| Capability | Free | Pro | Team |
+| Allowance | Free | Pro | Team |
 |---|---:|---:|---:|
 | Monthly price | $0 | $49 | $199 |
 | Approved messages per usage period | 10,000 | 250,000 | 2,000,000 |
 | Tracked agents | 5 | 25 | 100 |
 | Tier rate limit | 60/min | 120/min | 300/min |
-| Shadow mode and timelines | Yes | Yes | Yes |
-| Schema-change detection | — | Yes | Yes |
-| Run budgets and reservations | — | Yes | Yes |
-| Custom hosted step/repeat limits | — | — | Yes |
-| Listed retention | 7 days | 30 days | 1 year |
+| Active API keys | 2 | 5 | High implementation cap |
+| Webhook destinations | 1 | 5 | High implementation cap |
+| Default rolling reported-spend threshold | $0.50 / 60s | $5 / 60s | $50 / 60s |
+| Timeline retention¹ | 7 days | 30 days | 365 days |
+
+¹ Retention is subject to the record limits above—not a guarantee of a complete archive.
 
 Account-issued keys share an account-anchored **30-day usage period** and tracked-agent allowance. Creating another key does not create fresh account quota.
 
 Run budgets, reservations, and timelines are **API key + session scoped**.
 
+### Feature Matrix
+
+| Feature | Free | Pro | Team |
+|---|:---:|:---:|:---:|
+| Exact-repeat, cycle, and step checks | ✓ | ✓ | ✓ |
+| Shadow mode | ✓ | ✓ | ✓ |
+| Timelines and threshold comparison | ✓ | ✓ | ✓ |
+| Owner-reviewed one-action continuation | ✓ | ✓ | ✓ |
+| Client-reported semantic evidence | ✓ | ✓ | ✓ |
+| Default rolling reported-spend protection² | ✓ | ✓ | ✓ |
+| Custom rolling spend thresholds | — | ✓ | ✓ |
+| Run budgets and estimated reservations | — | ✓ | ✓ |
+| Schema-change detection | — | ✓ | ✓ |
+| Custom hosted step/repeat limits | — | — | ✓ |
+
+² Requires authorized cost reporting.
+
+The following SDK capabilities have **no paid-tier gate**:
+
+- Local checks and explicit payload normalization
+- Optional runtime metadata normalization
+- Experimental semantic warnings and blocking
+- Unified sync/async runtime
+- Framework/MCP registration hooks
+- Outage policies
+- Configured-price usage-accounting helpers
+
+Hosted requests still require an API key and follow their applicable allowances. Encoder/provider charges and optional framework dependencies are separate.
+
+**Pro versus Team:** most capabilities are shared. Team adds custom hosted step/repeat limits, higher usage and agent allowances, a higher rate limit, more key/webhook capacity, and longer retention. Shared workspaces or other collaboration features are not implied.
+
 Configuration can override defaults. See the [website](https://agenttrafficcop.com) for current commercial terms.
+
+## History and Deployment Boundaries
+
+| State | Storage boundary |
+|---|---|
+| `LocalGuard` history | In-memory, one instance |
+| Memory-backed hosted detector history | One process; lost on restart |
+| Redis-backed hosted detector history | Shared compatible workers; depends on persistence and TTL |
+| Timelines and spending records | Separate persistent database |
+| Semantic embeddings | Local monitor memory; not shared by hosted Redis |
+
+Persistent timelines do not restore active detector history.
+
+The server supports `ATC_REQUIRE_SHARED_STATE=true` to refuse startup without reachable Redis. This checks connectivity—not disk durability or backups.
+
+**Redis durability is a deployment configuration, not a paid-tier feature.** Production storage must be configured and verified separately.
 
 ## Failure Handling
 
 - Inspect local results; invalid local inputs raise `ValueError`.
 - Catch `AgentTrafficCopError` for direct hosted checks.
 - Direct budget and reservation helpers expose HTTPX failures.
-- Runtime callbacks, accounting, and validation can raise additional errors.
-- Unless deliberately using the documented degraded policy, stop after any failed check.
-- Never assume a timeout means the server recorded nothing.
+- Runtime callbacks, validation, and accounting can raise additional errors.
+- Unless explicitly using the documented degraded policy, stop after any failed check.
+- Do not assume a timeout means the server recorded nothing.
 - Never retry an executed action because its response or cost report failed.
 
-No guard can protect execution paths that bypass it. Keep session IDs, policy selection, reset operations, and reporting authority under trusted application control.
+Keep session IDs, reset operations, policy selection, and reporting authority under trusted application control. Unwrapped execution paths remain unprotected.
 
 ## Validation
 
 SDK 1.6.0 release validation included:
 
-- **739 passing Python tests**, with **3 expected skips**.
-- **6 framework/MCP integration tests**.
-- Real Redis restart and independent-process coordination tests.
-- Dashboard and landing behavior/security checks.
-- Strict wheel/source-distribution checks.
-- **20 clean-installed-package checks** and fresh PyPI installation verification.
-- Passing final PR, post-merge CI, and release verification runs.
+- **739 passing Python tests**, with **3 expected skips**
+- **6 framework/MCP integration tests**
+- Real Redis restart and independent-process coordination tests
+- Dashboard and landing behavior/security checks
+- Strict wheel and source-distribution checks
+- **20 clean-installed-package checks** and fresh PyPI installation verification
+- Passing final PR, post-merge CI, and release verification runs
 
 These results do not establish semantic-model accuracy, production Redis configuration, every customer integration, or actual provider billing accuracy.
 
