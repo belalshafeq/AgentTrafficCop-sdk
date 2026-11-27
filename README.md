@@ -16,7 +16,7 @@ Catch repeated actions, repeating cycles and step-limit overruns. Start locally 
 Requires **Python 3.11+**.
 
 ```bash
-python -m pip install --upgrade 'agenttrafficcop==1.7.0'
+python -m pip install --upgrade 'agenttrafficcop==2.0.0'
 ```
 
 Check your installed version:
@@ -25,7 +25,7 @@ Check your installed version:
 python -c "from importlib.metadata import version; print(version('agenttrafficcop'))"
 ```
 
-This README describes **published SDK 1.7.0**. Do not assume APIs or defaults from unreleased source are available in your installed package.
+SDK 2.0.0 changes the default `GuardRuntime` metadata normalization: root `timestamp`, `request_id` and `trace_id` fields are stripped by default. Nested fields are preserved. For strict 1.x hashing, set `normalize_volatile_metadata=False` explicitly. Use a new session ID when migrating an active workflow.
 
 [Version differences and migration →](https://agenttrafficcop.com/guide/#versions)
 
@@ -38,14 +38,14 @@ This README describes **published SDK 1.7.0**. Do not assume APIs or defaults fr
 | Configure a budget-protected run once | `runtime.run(...)` |
 | Check, reserve, execute, report and settle | `run.execute()` / `aexecute()` |
 | Detect similar meanings across differently worded actions | `SemanticMonitor` |
+| Sanitize provider text and authorize tools | `SecurityGuard` |
+| Recover from eligible provider failures | `RecoveryHooks` |
 | Manage hosted connections yourself | `Guard` / `GuardSync` |
 | Protect framework tools or nodes | Explicit framework registration hooks |
 
 ## Quickstart: Local Protection
 
-This complete example executes a tool twice, then blocks the third identical attempt.
-
-No account, API key or network connection is required.
+This example executes a tool twice, then blocks the third identical attempt. No account, API key or network connection is required.
 
 ```python
 from agenttrafficcop import LocalGuard
@@ -94,8 +94,6 @@ Attempt 3: blocked (REPEATED_PAYLOAD_LOOP)
 - Restart, inactivity expiry or reset removes history.
 - Local checks do not enforce hosted quotas, schema detection or spending controls.
 - Approved steps count checks—not verified executions.
-
-Defaults include a repeat threshold of `3`, a step limit of `50`, maximum cycle length of `2`, and session inactivity expiry of `3600` seconds.
 
 Invalid inputs raise `ValueError`. Do not execute after a rejected or failed check.
 
@@ -146,9 +144,7 @@ else:
         print(search_docs("refund policy"))
 ```
 
-Reuse `run_id` for subsequent actions in the same run.
-
-For async applications, use `await runtime.acheck(...)` with the same arguments.
+Reuse `run_id` for subsequent actions in the same run. For async applications, use `await runtime.acheck(...)` with the same arguments.
 
 `GuardRuntime` manages short-lived clients. Use `with GuardSync(...)` or `async with Guard(...)` when you need explicit lifecycle management and connection reuse.
 
@@ -156,11 +152,11 @@ For async applications, use `await runtime.acheck(...)` with the same arguments.
 
 [Hosted checks and async usage →](https://agenttrafficcop.com/guide/#hosted)
 
-## Semantic Loop Blocking
+## Semantic Loop Detection
 
 Deterministic detection compares hashes—not meaning. Experimental semantic monitoring can flag similar meanings across differently worded actions.
 
-**This is semantic loop detection, not semantic caching.** It does not store and reuse model answers.
+**This is semantic loop detection, not semantic caching.** It does not store or reuse model answers. Semantic observations are advisory—not an authorization or safety decision.
 
 ### One-line encoder setup
 
@@ -174,42 +170,99 @@ from agenttrafficcop import SemanticMonitor
 monitor = SemanticMonitor.openai()
 ```
 
-Attach it to your hosted runtime:
+Attach it to a hosted runtime:
 
 ```python
 runtime = GuardRuntime(
     url="https://api.agenttrafficcop.com",
     api_key=os.environ["ATC_API_KEY"],
     semantic_monitor=monitor,
-    semantic_mode="block",
-)
-
-decision = runtime.check(
-    session_id=run_id,
-    sender="planner",
-    recipient="search_docs",
-    payload={"tool": "search_docs", "query": "refund policy"},
-    semantic_text="Find the refund rules",
+    semantic_mode="block",  # Explicit opt-in; default is "warn".
 )
 ```
 
-Handle rejection and failure before executing, as in the hosted quickstart.
+In `block` mode, the runtime can stop execution on a semantic warning or unavailable monitoring. Handle rejection and failure before executing.
 
-### Important boundaries
+### Shared history and local ONNX
 
-- Requires an OpenAI key in addition to the hosted ATC key.
-- Construction makes no request; observing text sends it to OpenAI and may incur charges.
-- Default helper model: `text-embedding-3-small`.
-- No model is bundled or downloaded automatically.
+Redis sharing is optional and requires the `semantic-redis` extra. The local ONNX encoder requires `semantic-onnx` and model files you supply:
+
+```bash
+python -m pip install 'agenttrafficcop[semantic-redis,semantic-onnx]==2.0.0'
+```
+
+```python
+import os
+from agenttrafficcop import SemanticMonitor
+
+monitor = SemanticMonitor.onnx(
+    "/models/reviewed-model.onnx",
+    "/models/tokenizer.json",
+    model_id="reviewed-model-v1",
+    redis_url=os.environ["REDIS_URL"],
+)
+```
+
+History is bounded by configured capacity and TTL. Redis sharing applies only to monitors configured with the same compatible Redis namespace; it does not share hosted detector history, budgets or reservations. The ONNX adapter does not download or bundle model weights. Operators must supply and review compatible model and tokenizer files.
+
+### Semantic boundaries
+
+- Constructing `SemanticMonitor.openai()` makes no request; observing text sends it to OpenAI and may incur charges.
+- Default OpenAI embedding model: `text-embedding-3-small`.
 - BYO synchronous embedding encoders remain supported.
 - Default runtime semantic mode is `warn`; `block` must be selected explicitly.
-- Block mode stops on a semantic warning or unavailable monitoring.
-- History is bounded, process-local and based on attempted checks.
-- False positives and missed loops are possible.
-
-Start with representative workloads in warning mode before selecting a blocking threshold.
+- Similarity may produce false positives or miss loops. It is not a safety classifier, authorization mechanism or semantic cache.
 
 [Complete semantic examples, tuning and BYO setup →](https://agenttrafficcop.com/guide/#semantic)
+
+## Security and Permissions
+
+`SecurityGuard` provides explicit text sanitization, tool authorization and approval checks. This example assumes `authenticated_role` comes from trusted application authentication and `approval_service` performs an actual human-review process.
+
+```python
+from agenttrafficcop import SecurityGuard, SecurityPolicyError
+
+security = SecurityGuard(
+    {"operator": {"search", "delete_record"}},
+    approval_required={"delete_record"},
+)
+
+scan = security.sanitize_text(user_supplied_text)
+if not scan.allowed:
+    raise SecurityPolicyError("Input needs review")
+
+protected_delete = security.wrap_tool(
+    delete_record,
+    tool="delete_record",
+    role=authenticated_role,
+    approver=approval_service,
+)
+```
+
+Tools are default-deny unless allowed for the supplied role. Approval-required tools proceed only when the approver returns exactly `True`.
+
+The OpenAI-compatible Chat Completions and Anthropic Messages wrappers sanitize inspected text and reject unsupported multimodal blocks rather than passing unscanned content through. They do not patch provider clients globally. Framework and MCP wrappers accept optional security controls, but only explicitly wrapped or registered paths are protected.
+
+Detection is heuristic: it flags a small set of prompt-injection patterns and redacts common PII/credential forms. It is not comprehensive injection or PII detection, a safety guarantee, or a substitute for trusted identity, authorization policy or human review.
+
+[Security helper examples and limitations →](https://agenttrafficcop.com/guide/#sdk-20)
+
+## Provider Recovery
+
+`RecoveryHooks` supports bounded, caller-controlled retries and optional fallback model routing. The retry cap is three. Provider adapters retry explicit HTTP 429 responses by default. Timeouts, connection failures and other statuses are not retried by default because request completion may be ambiguous; callers can opt into other classifications with `retry_if` or `on_failure`.
+
+```python
+from agenttrafficcop import RecoveryHooks
+
+recovered_create = RecoveryHooks(
+    max_retries=1,
+    fallback_model="your-backup-model",
+).wrap_openai_chat(openai_client.chat.completions.create)
+```
+
+Recovery instructions and model routing apply to model-generation requests. They do not retry side-effecting tools. If you explicitly opt into retrying ambiguous provider outcomes, repeated requests may duplicate provider cost. Use only when your application accepts that risk.
+
+[Recovery and failure-path details →](https://agenttrafficcop.com/guide/#recovery)
 
 ## Budget-Protected Execution
 
@@ -235,9 +288,7 @@ response = run.execute(
 )
 ```
 
-Use `await run.aexecute(...)` for async work.
-
-The helper handles:
+Use `await run.aexecute(...)` for async work. The helper handles:
 
 ```text
 check → reserve → execute → report → settle
@@ -258,7 +309,7 @@ A budget setting or ordinary API key does not automatically connect provider bil
 
 ### Accounting and recovery
 
-SDK 1.7.0 includes configured-price adapters for supported non-streaming OpenAI and Anthropic text-token usage.
+SDK 2.0.0 includes configured-price adapters for supported non-streaming OpenAI and Anthropic text-token usage, plus named LiteLLM, OpenRouter and LangChain contracts.
 
 - Duplicate reservations do not authorize another execution.
 - Known supported usage can be reported and settled.
@@ -271,18 +322,19 @@ Streaming, audio, tool fees, discounts and other billing variations may need cus
 
 > Reported-cost controls and estimated reservations are not guaranteed provider-side hard caps. Underestimates, delayed reports and unreserved calls can exceed a budget.
 
-[Complete budget and accounting setup →](https://agenttrafficcop.com/guide/#budgets)  
+[Complete budget and accounting setup →](https://agenttrafficcop.com/guide/#budgets)
+
 [Failure recovery and reporting-only retries →](https://agenttrafficcop.com/guide/#recovery)
 
 ## Framework and MCP Integrations
 
-Install the extra you need:
+Install the extras you need:
 
 ```bash
-python -m pip install 'agenttrafficcop[langgraph]==1.7.0'
-python -m pip install 'agenttrafficcop[crewai]==1.7.0'
-python -m pip install 'agenttrafficcop[autogen-agentchat]==1.7.0'
-python -m pip install 'agenttrafficcop[mcp]==1.7.0'
+python -m pip install 'agenttrafficcop[langgraph]==2.0.0'
+python -m pip install 'agenttrafficcop[crewai]==2.0.0'
+python -m pip install 'agenttrafficcop[autogen-agentchat]==2.0.0'
+python -m pip install 'agenttrafficcop[mcp]==2.0.0'
 ```
 
 | Integration | Entry point | Tested version |
@@ -293,9 +345,7 @@ python -m pip install 'agenttrafficcop[mcp]==1.7.0'
 | MCP client tools | `runtime.mcp_client(...)` | `1.30.0` |
 | Generic callables | `runtime.wrap(...)` / `guard_functions(...)` | Supported non-streaming sync/async functions |
 
-Register the execution paths you want protected and provide application-specific context for run identity and meaningful arguments.
-
-**Only wrapped or registered paths are protected.** Framework hooks do not automatically reserve budgets or account for every internal model call.
+Register the execution paths you want protected and provide application-specific context for run identity and meaningful arguments. Security options are explicit; roles must come from trusted identity. Wrappers do not automatically reserve budgets or account for every internal model call.
 
 The legacy AutoGen adapter supports `pyautogen==0.2.35`; it is separate from current AgentChat and does not imply AG2 support.
 
@@ -303,9 +353,7 @@ The legacy AutoGen adapter supports `pyautogen==0.2.35`; it is separate from cur
 
 ## Action Identity and Privacy
 
-Include stable tool names and meaningful arguments in each payload.
-
-Changing timestamps can hide exact repeats. Excluding business arguments can make distinct actions appear identical.
+Include stable tool names and meaningful arguments in each payload. Changing timestamps can hide exact repeats. Excluding business arguments can make distinct actions appear identical.
 
 ### Explicit exclusions
 
@@ -330,13 +378,13 @@ decision = runtime.check(
 
 Paths are JSON pointers through objects, not array selectors or wildcards. Normalization uses a copy and does not modify the executed action.
 
-### SDK 1.7.0 defaults
+### SDK 2.0.0 defaults
 
-- LocalGuard excludes no fields unless configured.
-- GuardRuntime defaults to hash-only hosted checks.
-- Direct Guard/GuardSync checks default to raw payload transmission.
-- The runtime metadata preset is **opt-in** through `normalize_volatile_metadata=True`.
-- That 1.7.0 preset removes root `timestamp`, `request_id` and `trace_id`, plus those fields directly inside root `metadata`.
+- `LocalGuard` excludes no fields unless configured.
+- `GuardRuntime` defaults to hash-only hosted checks.
+- Direct `Guard`/`GuardSync` checks default to raw payload transmission.
+- `GuardRuntime` strips root `timestamp`, `request_id` and `trace_id` by default.
+- Nested fields are preserved; pass `normalize_volatile_metadata=False` for strict raw hashing or explicitly configure `ignore_paths`.
 
 Hashes, session IDs, agent names and routing fields still reach the hosted service. Hashes reveal equality; they are not encryption or guaranteed anonymization.
 
@@ -402,9 +450,7 @@ Account-issued keys share an account-anchored 30-day usage period and tracked-ag
 
 ¹ Requires authorized cost reporting.
 
-Local checks, semantic policies, normalization helpers, framework hooks, outage policies and configured-price accounting helpers have **no SDK paid-tier gate**. Hosted allowances, paid hosted controls and external provider charges still apply.
-
-Team adds capacity, retention and custom hosted step/repeat limits—not unimplemented collaboration or shared-workspace features.
+Local checks, semantic policies, normalization helpers, framework hooks, outage policies and configured-price accounting helpers have **no SDK paid-tier gate**. Hosted allowances, paid hosted controls and external provider charges still apply. Team adds capacity, retention and custom hosted step/repeat limits—not unbuilt collaboration or shared-workspace features.
 
 [Plans, storage and production requirements →](https://agenttrafficcop.com/guide/#production)
 
@@ -414,27 +460,23 @@ Team adds capacity, retention and custom hosted step/repeat limits—not unimple
 - Optional fail-open permits degraded continuation only after eligible connection-establishment failures.
 - Degraded continuation is not hosted approval and cannot enforce hosted quotas, spending or history.
 - Reserved execution requires actual hosted approval.
-- Local and semantic histories are process-local.
-- Redis-backed hosted detector history depends on deployment persistence and TTL.
+- Local semantic histories are process-local unless Redis sharing is configured.
 - Budgets, reservations and timelines use a separate persistent ledger.
 - Persistent timelines do not restore active detector history.
 - Installing the SDK does not provision Redis or a database.
 
-Server operators can use `ATC_REQUIRE_SHARED_STATE=true` to refuse startup without reachable Redis. Connectivity checks do not establish durability or backups.
-
-Never assume a timeout means no charge, no execution or no recorded request.
-
-[Failure handling and outage policies →](https://agenttrafficcop.com/guide/#recovery)
+Server operators can use `ATC_REQUIRE_SHARED_STATE=true` to refuse startup without reachable Redis. Connectivity checks do not establish durability or backups. Never assume a timeout means no charge, no execution or no recorded request.
 
 ## Documentation
 
-The website guide contains setup instructions, examples, API signatures, recovery requirements and version differences.
+The website guide contains setup instructions, examples, API signatures, recovery requirements and migration notes.
 
 - [Getting started](https://agenttrafficcop.com/guide/#getting-started)
 - [Local protection](https://agenttrafficcop.com/guide/#local)
 - [Hosted protection and async](https://agenttrafficcop.com/guide/#hosted)
 - [Identity, normalization and privacy](https://agenttrafficcop.com/guide/#identity)
-- [Semantic blocking](https://agenttrafficcop.com/guide/#semantic)
+- [Semantic detection](https://agenttrafficcop.com/guide/#semantic)
+- [Security, recovery and shared semantic helpers](https://agenttrafficcop.com/guide/#sdk-20)
 - [Budgets and accounting](https://agenttrafficcop.com/guide/#budgets)
 - [Framework integrations](https://agenttrafficcop.com/guide/#frameworks)
 - [Failure recovery](https://agenttrafficcop.com/guide/#recovery)
@@ -443,7 +485,7 @@ The website guide contains setup instructions, examples, API signatures, recover
 - [Troubleshooting](https://agenttrafficcop.com/guide/#troubleshooting)
 - [Download the guide as Markdown](https://agenttrafficcop.com/guide.md)
 
-When asking an AI assistant to integrate AgentTrafficCop, provide the guide and specify your installed SDK version. Do not assume that unreleased source APIs exist in the published package.
+When asking an AI assistant to integrate AgentTrafficCop, provide this guide and specify your installed SDK version.
 
 ## Links
 
