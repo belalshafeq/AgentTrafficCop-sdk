@@ -1,7 +1,7 @@
 # AgentTrafficCop Python SDK
 
 [![PyPI version](https://img.shields.io/pypi/v/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
-[![Python versions](https://img.shields.io/pypi/pyversions/agenttrafficcop/)](https://pypi.org/project/agenttrafficcop/)
+[![Python versions](https://img.shields.io/pypi/pyversions/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
 
 **Check the next agent action before it runs.**
 
