@@ -1,524 +1,773 @@
-# AgentTrafficCop SDK
+# AgentTrafficCop Python SDK
 
 [![PyPI version](https://img.shields.io/pypi/v/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agenttrafficcop.svg)](https://pypi.org/project/agenttrafficcop/)
 
 **Check the next agent action before it runs.**
 
-Catch repeated actions, repeating cycles, and step-limit overruns. Start locally without an account, or use hosted checks for coordinated decisions, run timelines, and reported-spending controls.
+AgentTrafficCop provides deterministic checks for repeated actions, repeating
+cycles, and approved-step limits. Choose local in-process checks or a hosted API
+with shadow decisions, incident timelines, threshold comparison, and reported-cost
+controls. Your application must honor every rejected or failed check.
 
-**Installing the SDK does not automatically protect every call.** Your application must check or wrap each execution boundary you want protected—and honor rejected or failed checks.
+Legacy checks do not execute actions, automatically intercept every model call,
+understand semantic repetition with deterministic checks, or cancel in-flight work.
+The new runtime execution helpers invoke only the callable explicitly passed to them.
+The separate experimental SemanticMonitor uses your encoder for warnings only.
 
-[Developer guide](https://agenttrafficcop.com/guide/) · [Dashboard](https://agenttrafficcop.com/dashboard.html) · [API reference](https://agenttrafficcop.com/guide/#api)
+## SDK 2.0: the recommended simple path
+
+See [short integration recipes and migration guidance](QUICKSTARTS.md).
+Configure protected calls once with runtime.run; execute/aexecute own the full
+reserved execution path. SemanticMonitor.openai provides explicit one-line
+hosted embedding setup. UsageAccountant supports named LiteLLM, OpenRouter and
+LangChain nonstreaming contracts alongside raw provider responses.
+
+**Breaking default:** GuardRuntime strips root timestamp/request_id/trace_id.
+Use normalize_volatile_metadata=False for 1.x strict hashing; migrate with a new
+run ID. Nested fields are preserved. Low-level client/LocalGuard defaults do not
+change. Unknown-cost exceptions retain holds; they are never settled as zero.
 
 ## Install
 
-Requires **Python 3.11+**.
+Python **3.11+**:
 
 ```bash
 python -m pip install --upgrade 'agenttrafficcop==2.2.0'
 python -c "from importlib.metadata import version; print(version('agenttrafficcop'))"
 ```
 
-SDK 2.0 changed `GuardRuntime`’s default metadata normalization: root `timestamp`, `request_id`, and `trace_id` fields are stripped by default; nested fields are preserved. For strict 1.x hashing, set `normalize_volatile_metadata=False` explicitly. Use a new session ID when migrating an active workflow.
+Base dependency: `httpx>=0.27.0,<0.30.0`. Use a virtual environment; optional
+framework extras have their own requirements.
 
-SDK 2.1 added optional OpenAI-compatible BYOK gateway helpers and opt-in trace batching. SDK 2.2 added checkpointed LangGraph review support with exact-action verification before a resumed node runs.
+## CLI setup and deployment checks
 
-[Version differences and migration notes →](https://agenttrafficcop.com/guide/#versions)
+The `atc init` setup wizard is available in the repository source but is not
+included in the currently published PyPI package yet. To try it from a local
+checkout of this repository, install the SDK from its source directory:
 
-## Choose an integration
+```bash
+python -m pip install -e ./sdk
+atc init
+```
 
-| You want to… | Use |
-|---|---|
-| Try offline loop protection without credentials | `LocalGuard` |
-| Check actions through the hosted API | `GuardRuntime.check()` / `acheck()` |
-| Configure a budget-protected run | `runtime.run(...)` |
-| Check, reserve, execute, report, and settle | `run.execute()` / `aexecute()` |
-| Flag similar meanings across differently worded actions | `SemanticMonitor` |
-| Sanitize provider text and authorize tools | `SecurityGuard` |
-| Recover from eligible provider failures | `RecoveryHooks` |
-| Manage hosted connections explicitly | `Guard` / `GuardSync` |
-| Protect selected framework paths | Explicit framework registration hooks |
+For the LangGraph starter, install the optional extra:
 
-## Local protection
+```bash
+python -m pip install -e './sdk[langgraph]'
+atc init
+```
 
-This example executes a tool twice, then blocks the third identical attempt. No account, API key, or network connection is required.
+The wizard generates an integration example, an environment-variable template,
+and setup notes. It does not request or write your real API key. Review the
+generated files and provide `ATC_API_KEY` securely through your environment or
+secret manager.
+
+The source version also includes `atc doctor` for Kubernetes diagnostics.
+Add `--probe-egress` to test ATC reachability and whether public TCP egress is
+blocked. That probe creates a temporary pod and requires pod create/exec/delete
+permissions, an image pull, and a NetworkPolicy-enforcing CNI. A passing policy
+shape check alone does not prove runtime enforcement.
+
+Once a new SDK release is published, install or upgrade the package with
+`python -m pip install --upgrade agenttrafficcop`.
+
+## Route OpenAI calls through ATC with BYOK
+
+Install the optional OpenAI integration:
+
+```bash
+python -m pip install 'agenttrafficcop[openai]'
+```
+
+The adapter configures the OpenAI SDK to use the ATC gateway, sends the ATC key
+as bearer authorization and your provider key separately as BYOK, and attaches
+a run ID plus a unique operation ID to each Chat Completions request:
 
 ```python
-from agenttrafficcop import LocalGuard
+import os
+from agenttrafficcop import openai_gateway_client
 
-
-def search_docs(query):
-    return f"Found documentation for: {query}"
-
-
-guard = LocalGuard(max_repeats=3, max_steps=50)
-run_id = "refund-demo"
-
-for attempt in range(1, 4):
-    decision = guard.check(
-        session_id=run_id,
-        payload={
-            "tool": "search_docs",
-            "arguments": {"query": "refund policy"},
-        },
+with openai_gateway_client(
+    atc_api_key=os.environ["ATC_API_KEY"],
+    provider_api_key=os.environ["OPENAI_API_KEY"],  # your provider key; never give it to us
+    run_id="order-742",  # set a budget for this run before calling the gateway
+    base_url=os.getenv("ATC_BASE_URL", "https://your-atc-host/v2"),
+) as client:
+    response = client.chat.completions.create(
+        model="your-configured-model",
+        messages=[{"role": "user", "content": "Summarize this report."}],
+        max_tokens=300,
     )
-
-    if not decision.approved:
-        print(f"Attempt {attempt}: blocked ({decision.reason})")
-        break
-
-    print(f"Attempt {attempt}: approved")
-    print(search_docs("refund policy"))
 ```
 
-Expected output:
+For async applications, create the client with `async_openai_gateway_client`
+and use the returned client in `async with`. Set `provider="groq"` to route compatible OpenAI SDK calls to
+the fixed Groq gateway route. The gateway currently supports text-only,
+non-streaming Chat Completions for configured models; configure exact model
+prices and an eligible run budget on ATC first. No prompts or completions are
+added to trace telemetry.
 
-```text
-Attempt 1: approved
-Found documentation for: refund policy
-Attempt 2: approved
-Found documentation for: refund policy
-Attempt 3: blocked (REPEATED_PAYLOAD_LOOP)
-```
+The adapter adds one operation ID to each `create` call before handing it to
+the OpenAI SDK, so its internal retries reuse that ID. For deduplication across application/process
+restarts, pass your own persisted ID with
+`extra_headers={"X-ATC-Operation-ID": durable_operation_id}`. Do not blindly
+retry an ambiguous result with a new ID: it can trigger a second provider call.
+This integration covers only requests made through this configured client; it
+does not monkey-patch other clients or frameworks. A provider key is still
+required for a live BYOK call, but mock tests and local setup validation need
+no real provider key.
 
-### Local behavior
+## Security, recovery, and shared semantic helpers (2.1.0)
 
-- Reuse the **same guard instance and session ID** throughout the run.
-- A new instance or session ID starts independent history.
-- Separate processes do not share local history.
-- Restart, inactivity expiry, or reset removes history.
-- Local checks do not enforce hosted quotas, schema detection, or spending controls.
-- Approved steps count checks—not verified tool executions.
-
-Invalid inputs raise `ValueError`. Do not execute after a rejected or failed check.
-
-[Local configuration and return values →](https://agenttrafficcop.com/guide/#local)
-
-## Hosted protection
-
-Create an API key in the [dashboard](https://agenttrafficcop.com/dashboard.html), then keep it in an environment variable or secret manager.
-
-```bash
-export ATC_API_KEY="your-api-key"
-```
-
-Check immediately before executing the protected action:
+These are explicit Python SDK helpers; none patches model or framework calls
+globally. They are included in the 2.1.0 package.
 
 ```python
-import os
-import uuid
-
-from agenttrafficcop import AgentTrafficCopError, GuardSync
-
-
-def search_docs(query):
-    return f"Found documentation for: {query}"
-
-
-run_id = uuid.uuid4().hex
-
-with GuardSync(
-    url="https://api.agenttrafficcop.com",
-    api_key=os.environ["ATC_API_KEY"],
-) as guard:
-    try:
-        decision = guard.check(
-            session_id=run_id,
-            sender="planner",
-            recipient="search_docs",
-            payload={
-                "tool": "search_docs",
-                "arguments": {"query": "refund policy"},
-            },
-        )
-    except AgentTrafficCopError as error:
-        print("Action not executed:", error.error_code)
-        raise
-    else:
-        if decision.execution_allowed:
-            print(search_docs("refund policy"))
-```
-
-Reuse the same `run_id` for actions in the same run. For async applications, use `async with Guard(...)` and `await guard.check(...)`.
-
-**Hosted checks fail closed by default.** Other validation or callback errors should also stop execution. Do not catch an error and continue unguarded.
-
-[Hosted checks and async usage →](https://agenttrafficcop.com/guide/#hosted)
-
-## Semantic loop detection
-
-Deterministic detection compares hashes—not meaning. Experimental semantic monitoring can flag similar meanings across differently worded actions.
-
-**This is semantic loop detection, not semantic caching.** It does not store or reuse model answers. Semantic observations are advisory—not an authorization or safety decision.
-
-Set your OpenAI key in the environment:
-
-```bash
-export OPENAI_API_KEY="your-openai-api-key"
-```
-
-Then create and attach a monitor:
-
-```python
-import os
-
-from agenttrafficcop import GuardRuntime, SemanticMonitor
-
-monitor = SemanticMonitor.openai()
-runtime = GuardRuntime(
-    url="https://api.agenttrafficcop.com",
-    api_key=os.environ["ATC_API_KEY"],
-    semantic_monitor=monitor,
-    semantic_mode="block",  # Explicit opt-in; the default is "warn".
-)
-```
-
-In `block` mode, the runtime can stop execution on a semantic warning or unavailable monitoring. Handle rejection and failure before executing.
-
-### Shared history and local ONNX
-
-Redis sharing is optional. The local ONNX encoder requires model files you supply:
-
-```bash
-python -m pip install 'agenttrafficcop[semantic-redis,semantic-onnx]==2.2.0'
-```
-
-```python
-import os
-
-from agenttrafficcop import SemanticMonitor
-
-monitor = SemanticMonitor.onnx(
-    "/models/reviewed-model.onnx",
-    "/models/tokenizer.json",
-    model_id="reviewed-model-v1",
-    redis_url=os.environ["REDIS_URL"],
-)
-```
-
-History is bounded by configured capacity and TTL. Redis sharing applies only to monitors configured with the same compatible Redis namespace; it does not share hosted detector history, budgets, or reservations. The ONNX adapter does not download or bundle model weights. Operators must supply and review compatible model and tokenizer files.
-
-### Semantic boundaries
-
-- Constructing `SemanticMonitor.openai()` does not make a request; observing text sends it to OpenAI and may incur charges.
-- The default OpenAI embedding model is `text-embedding-3-small`.
-- BYO synchronous embedding encoders are supported.
-- Default runtime semantic mode is `warn`; `block` must be selected explicitly.
-- Similarity may produce false positives or miss loops. It is not a safety classifier, authorization mechanism, or semantic cache.
-
-[Complete semantic examples, tuning, and BYO setup →](https://agenttrafficcop.com/guide/#semantic)
-
-## Security and permissions
-
-`SecurityGuard` provides explicit text sanitization, tool authorization, and approval checks. This example assumes `authenticated_role` comes from trusted application authentication and `approval_service` performs a real human-review process.
-
-```python
-from agenttrafficcop import SecurityGuard, SecurityPolicyError
+from agenttrafficcop import SecurityGuard, RecoveryHooks
 
 security = SecurityGuard(
     {"operator": {"search", "delete_record"}},
     approval_required={"delete_record"},
 )
 
+# Sanitize untrusted text before adding it to a model request.
 scan = security.sanitize_text(user_supplied_text)
 if not scan.allowed:
-    raise SecurityPolicyError("Input needs review")
+    raise ValueError(f"Suspicious instruction: {scan.findings}")
+model_input = scan.text  # common email/phone/SSN/card/API-key patterns redacted
 
+# Wrap each sensitive tool explicitly. Derive role from trusted auth context;
+# provide a real approval workflow for destructive tools.
 protected_delete = security.wrap_tool(
     delete_record,
     tool="delete_record",
-    role=authenticated_role,
+    role=authenticated_role,  # resolved from trusted application auth context
     approver=approval_service,
 )
+
+# Provider adapters sanitize OpenAI/Anthropic text messages, then call your
+# existing provider client. No API keys are added to AgentTrafficCop.
+secured_create = security.wrap_openai_chat(openai_client.chat.completions.create)
+
+# Bounded provider recovery defaults to explicit HTTP 429 responses only;
+# opt into other classifications with retry_if. Never wrap a tool action.
+recovered_create = RecoveryHooks(max_retries=1, fallback_model="your-backup-model").wrap_openai_chat(
+    secured_create,
+)
+answer = recovered_create(model="your-primary-model", messages=[{"role": "user", "content": model_input}])
+
+# Distributed semantic history with an operator-provided local ONNX model.
+# Install: pip install 'agenttrafficcop[semantic-onnx,semantic-redis]'
+import os
+from agenttrafficcop import SemanticMonitor
+monitor = SemanticMonitor.onnx(
+    "/models/reviewed-model.onnx", "/models/tokenizer.json",
+    model_id="reviewed-model-v1", redis_url=os.environ["REDIS_URL"],
+)
 ```
 
-Tools are default-deny unless allowed for the supplied role. Approval-required tools proceed only when the approver returns exactly `True`.
+Prompt-injection detection is a small local heuristic, not a classifier or a
+security guarantee. PII redaction covers common patterns only; multimodal inputs
+are rejected by the provider wrappers unless separately inspected. Roles must
+come from trusted application identity, and the approval callback must perform
+an actual human review. Recovery is bounded and retries explicit HTTP 429 rate-limit
+responses by default. Timeouts, connection failures, and other statuses are not
+retried unless the caller explicitly opts in; such retries may duplicate provider
+cost when completion is ambiguous. Never wrap side-effecting tools. The ONNX runtime and Redis client are
+optional dependencies; **model weights are not bundled or downloaded**—operators
+must supply and review compatible local ONNX/tokenizer files.
 
-The OpenAI-compatible Chat Completions and Anthropic Messages wrappers sanitize inspected text and reject unsupported multimodal blocks rather than passing unscanned content through. They do not patch provider clients globally. Framework and MCP wrappers accept optional security controls, but only explicitly wrapped or registered paths are protected.
+## Opt-in run spans
 
-Detection is heuristic: it flags a limited set of prompt-injection patterns and redacts common PII and credential forms. It is not comprehensive injection or PII detection, a safety guarantee, or a substitute for trusted identity, authorization policy, or human review.
-
-[Security helper examples and limitations →](https://agenttrafficcop.com/guide/#sdk-20)
-
-## Provider recovery
-
-`RecoveryHooks` supports bounded, caller-controlled retries and optional fallback-model routing. The retry cap is three. Provider adapters retry explicit HTTP 429 responses by default. Timeouts, connection failures, and other statuses are not retried by default because request completion may be ambiguous.
+Use `GuardSync.span(...)` or `Guard.span(...)` around a tool/model/agent operation to add a timed event to the matching run timeline in the ATC dashboard:
 
 ```python
-from agenttrafficcop import RecoveryHooks
+with guard.span(RUN_ID, "search_documents", kind="tool"):
+    results = search_documents(query)
 
-recovered_create = RecoveryHooks(
-    max_retries=1,
-    fallback_model="your-backup-model",
-).wrap_openai_chat(openai_client.chat.completions.create)
+# Async equivalent:
+async with guard.span(RUN_ID, "summarize", kind="model"):
+    result = await summarize_async(text)
 ```
 
-Recovery instructions and model routing apply to model-generation requests. They do not retry side-effecting tools. If you explicitly opt into retrying ambiguous provider outcomes, repeated requests may duplicate provider cost. Use only when your application accepts that risk.
+Allowed kinds are `agent`, `tool`, `model`, `retrieval`, and `other`. Span names must be short safe labels. The SDK reports only the name, kind, parent/span IDs, duration, success/error status, and exception class; it never sends inputs, outputs, exception messages, or tracebacks. Reporting is best-effort and will not replace an application exception. This is explicit instrumentation—not automatic patching—so wrap only the operations you want to see. Completed spans appear in the run timeline; calls or work not wrapped by the SDK remain invisible. The timed-span and registration-hook helpers are included in SDK 2.1.0.
 
-[Recovery and failure-path details →](https://agenttrafficcop.com/guide/#recovery)
-
-## Budget-protected execution
-
-Configure routing and accounting once for a run:
+The registration-time `guard_functions`, `guard_autogen_tools`,
+`guard_crewai_tools`, and `guard_langgraph` helpers can wrap registered
+functions/nodes in spans for you. Create the batch around the run, and pass it
+when registering tools or graph nodes:
 
 ```python
-run = runtime.run(
+with guard.trace_batch(RUN_ID) as batch:
+    protected_tools = guard_functions(
+        runtime, tools, context=tool_context, trace_batch=batch,
+    )
+    agent = build_agent(protected_tools)
+    agent.run()
+```
+
+Use an async batch with async functions; for mixed sync/async registrations,
+pass `trace_batch={"sync": sync_batch, "async": async_batch}`. CrewAI exposes
+both execution paths, so pass that mapping when tracing both. Only functions
+registered through these explicit helpers are traced; nothing is monkey-patched.
+
+To reduce requests for multi-step runs, use `trace_batch`; it sends up to 100 spans per HTTP request by default:
+
+```python
+with guard.trace_batch(RUN_ID) as batch:
+    with batch.span("search_documents", kind="tool"):
+        results = search_documents(query)
+    with batch.span("summarize", kind="model"):
+        summary = summarize(results)
+```
+
+Async code can use `async with guard.trace_batch(RUN_ID) as batch:` and
+`async with batch.span(...)`. Batches flush at capacity and at scope exit, even
+when the wrapped work raises. Flush is still awaited once per batch—not a
+background queue—so reporting failure drops the batch but preserves the work's
+result or exception.
+
+## Budgeted provider calls: fewer per-call plumbing arguments
+
+These runtime provider-call helpers and the OpenAI gateway adapter are included
+in SDK 2.1.0. The gateway adapter is the simplest BYOK path for supported
+non-streaming Chat Completions; the runtime helpers provide separate local
+reservation/accounting controls for explicitly wrapped provider calls.
+
+For OpenAI Chat Completions or Anthropic Messages, bind the accountant and run
+context once, then pass the provider's create callable and a durable operation
+ID. Optional local estimate callback can be bound once too:
+
+```python
+run = runtime.run(session_id=RUN_ID, sender="agent", recipient="openai",
+                  accountant=accountant, estimate_cost=estimate_request)
+response = run.openai_chat(client.chat.completions.create,
+    operation_id=PERSISTED_OPERATION_ID, model=MODEL,
+    messages=[{"role": "user", "content": "..."}], max_tokens=500)
+```
+
+Use `await run.aopenai_chat(...)` for async calls. For Anthropic use
+`run.anthropic_messages(...)` / `await run.aanthropic_messages(...)` with an
+Anthropic `UsageAccountant`. Exact model prices and a trusted reporter are still
+configured once by the application. The local estimator must use your own
+pricing/tokenizer and return a positive estimate; it is not a provider hard cap.
+Operation IDs remain explicit and durable. Calls are non-streaming; only a
+hash-only action identity is sent by default. These methods do not intercept
+other provider APIs or add provider SDK dependencies.
+
+## New in 1.7.0: less setup, unchanged safety defaults
+
+- Bind session/routing/accounting once with `run = runtime.run(...)`, then use
+  `run.execute(...)` / `await run.aexecute(...)` for each reserved operation.
+- Optional one-line encoder setup: `SemanticMonitor.openai()` reads
+  OPENAI_API_KEY and sends text to OpenAI only when observing. Provider charges
+  apply; no model download or implicit opt-in. BYO encoders remain supported.
+
+See the first sections of [RUNTIME_FEATURES.md](RUNTIME_FEATURES.md) for setup,
+privacy, failure recovery and prerequisites. Unknown provider outcomes retain
+holds; post-call reporting failures never rerun executed calls. A configured
+Pro/Team budget and trusted accountant are still required for reserved execution.
+
+## Included from 1.6.0
+
+- GuardRuntime: one explicit sync/async facade, opt-in semantic blocking,
+  root transport-metadata normalization and connection-only degraded fail-open.
+- Registration-time hooks for a pinned LangGraph/CrewAI/current AutoGen set and
+  an explicit MCP call_tool proxy; no global instrumentation or streaming support.
+- Configured-price non-streaming OpenAI/Anthropic token-usage adapters and
+  trusted signed reporting; check/reserve/execute/final-settlement helpers.
+- Client-reported semantic evidence in compatible hosted timelines/replay;
+  observations are not verified hosted approvals or re-evaluated semantic replay.
+- Required-shared-state deployment gate and a durable Redis configuration;
+  Redis must still be provisioned/configured by the operator.
+
+See [RUNTIME_FEATURES.md](RUNTIME_FEATURES.md) for examples, supported versions,
+privacy, failure/cancellation limits and infrastructure requirements. Existing
+client defaults and detector thresholds remain unchanged. The new root metadata
+preset is opt-in, not the previously reverted recursive field stripper.
+
+## Included from 1.5.0
+
+- **Explicit outage policy:** fail-closed hosted enforcement with optional safe
+  connection-establishment retries and redacted events. No automatic local fallback.
+- **Experimental semantic warnings:** opt-in `SemanticMonitor` with your own
+  encoder, bounded embedding history, and no approvals or blocking authority.
+- **Human review:** compatible hosted dashboards let account owners authorize one
+  exact retry, without resetting history or bypassing quotas/spend controls.
+
+See [FEATURES.md](FEATURES.md) for usage, privacy and failure-path limits.
+
+## Included from 1.4.0
+
+- **Optional payload normalization:** explicitly ignore selected object fields
+  when computing action identity. Original action data is not mutated.
+- **Threshold comparison:** compare repeat/cycle/step policies offline or against
+  bounded hosted incident history, without executing actions or changing policy.
+- **Shared run spending reservations:** reserve estimated cost before participating
+  calls and settle through trusted signed actual-cost reporting. Pro/Team hosted
+  creation; not a provider-side hard spending cap.
+
+LocalGuard shipped in 1.3.0; hosted hash-only helpers shipped in 1.2.0. Defaults
+remain unchanged in 1.5.0. New hosted helpers require a compatible backend.
+
+## Local or hosted?
+
+| Capability | `LocalGuard` | `Guard` / `GuardSync` |
+|---|---|---|
+| API key / network required | No | Yes |
+| Exact repeats, cycles, step limits | Yes | Yes |
+| Optional field exclusions | Yes | With `hash_only=True` |
+| Shadow mode | No | Yes |
+| Dashboard records and retained-run replay | No | Yes |
+| Schema-change heuristic | No | Pro/Team |
+| Reported run budgets / reservations | No | Pro/Team |
+| State sharing | One guard instance | Depends on backend configuration |
+| Automatic action interception | No | No |
+
+## Local quick start
+
+```python
+from agenttrafficcop import LocalGuard
+
+guard = LocalGuard(max_repeats=3, max_steps=50)
+for _ in range(3):
+    result = guard.check(
+        session_id="example-run",
+        payload={"tool": "search", "arguments": {"query": "refund policy"}},
+    )
+    if not result.approved:
+        print("Not executed:", result.reason)
+        break
+    print("Approved step", result.step)
+    # Execute your protected action here.
+```
+
+The first two checks approve; the third returns `REPEATED_PAYLOAD_LOOP`.
+Reuse one guard instance and stable session ID throughout a run.
+
+Local defaults:
+
+```python
+guard = LocalGuard(
+    max_repeats=3, max_steps=50,
+    max_cycle_length=2, max_cycle_repeats=3,
+    max_sessions=1000, session_ttl=3600,
+    ignore_paths=(),
+)
+```
+
+`LocalResult` contains `approved`, `session_id`, `step`, `payload_hash`, and
+`reason`. Policy rejection reasons are `REPEATED_PAYLOAD_LOOP`,
+`CYCLIC_PAYLOAD_LOOP`, `STEP_LIMIT_EXCEEDED`, or `LOCAL_CAPACITY_EXCEEDED`.
+Invalid inputs raise `ValueError`; do not execute after a failed check.
+
+Checks and updates are thread-safe within one instance. History is in memory,
+expires after inactivity, and is lost on restart or `guard.reset(session_id)`.
+Separate processes/instances do not share history. At capacity, new unexpired
+sessions are rejected rather than evicting active protection. Rejected checks
+refresh existing activity time but do not advance approved history.
+
+Local mode makes no network requests, uploads no decisions, and has no hosted
+fallback, spending controls, or shadow mode. Approval counts checks, not verified
+executions. A different action can be approved after a repeat rejection if no
+other policy blocks it.
+
+## Optional payload normalization
+
+Changing timestamps or request IDs can hide exact repeats. Exclude only fields
+you explicitly know are irrelevant:
+
+```python
+from agenttrafficcop import LocalGuard, normalize_payload
+
+guard = LocalGuard(ignore_paths=["/timestamp", "/request/id"])
+action = {"tool": "search", "arguments": {"query": "refund"}, "timestamp": 123}
+result = guard.check(session_id="run-1", payload=action)
+if result.approved:
+    pass  # Execute the ORIGINAL action here.
+
+normalized_copy = normalize_payload(action, ignore_paths=["/timestamp"])
+```
+
+Paths are JSON pointers through **objects only**, not arrays or wildcards.
+`~1` escapes `/`; `~0` escapes `~`. Missing keys are ignored; root deletion is
+unsupported. Up to 64 paths, 512 characters and 32 components per path are
+accepted. Invalid paths/non-finite JSON inputs raise `ValueError`.
+
+No fields are removed automatically. Keep exclusions stable throughout a run;
+old hashes are not rewritten. Excluding meaningful arguments can make different
+actions look identical. This is not semantic detection.
+
+## Hosted quick start
+
+Verify your email, create an account and generate an API key in the
+[dashboard](https://agenttrafficcop.com/dashboard.html). Store it server-side:
+
+```bash
+export ATC_API_KEY="your-api-key"
+```
+
+```python
+import asyncio
+import os
+import uuid
+from agenttrafficcop import AgentTrafficCopError, Guard
+
+async def main():
+    run_id = uuid.uuid4().hex
+    async with Guard(
+        url="https://api.agenttrafficcop.com",
+        api_key=os.environ["ATC_API_KEY"],
+        dry_run=False,
+    ) as guard:
+        try:
+            result = await guard.check(
+                session_id=run_id, sender="planner", recipient="worker",
+                payload={"tool": "search", "arguments": {"query": "refund"}},
+            )
+        except AgentTrafficCopError as exc:
+            print("Not executed:", exc.error_code)
+            return
+        if result.approved:
+            print("Approved at step", result.step)
+            # Execute your protected action here.
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Use a stable ID throughout a run and a new ID for each independent run. Call at
+all relevant execution boundaries. Client creation alone does not protect code.
+
+`GuardSync` provides the same check without `await`:
+
+```python
+import os
+from agenttrafficcop import AgentTrafficCopError, GuardSync
+
+with GuardSync("https://api.agenttrafficcop.com", os.environ["ATC_API_KEY"], dry_run=False) as guard:
+    try:
+        result = guard.check(
+            session_id="my-stable-run-id", sender="planner", recipient="worker",
+            payload={"tool": "search", "arguments": {"query": "refund"}},
+        )
+    except AgentTrafficCopError as exc:
+        print("Not executed:", exc.error_code)
+    else:
+        if result.approved:
+            pass  # Execute your protected action here.
+```
+
+## Hosted hash-only checks
+
+Within an open `Guard` context:
+
+```python
+result = await guard.check(
+    session_id=run_id, sender="planner", recipient="worker",
+    payload={"tool": "search", "query": "refund", "timestamp": 123},
+    hash_only=True,
+    ignore_paths=["/timestamp"],  # Optional; introduced in 1.4.0.
+)
+```
+
+`GuardSync` uses the same arguments without `await`. Hosted field exclusions
+require `hash_only=True`; otherwise they raise `ValueError` before a request.
+The helper hashes a nonempty JSON object using sorted keys, compact separators,
+unescaped Unicode, UTF-8 and SHA-256. Non-finite numbers are rejected. This is
+not RFC 8785 canonicalization. A normalized empty object is rejected.
+
+Raw transmission is the hosted default. Hash-only omits the raw payload, rejects
+metadata, and never falls back to sending raw contents. Hashes and routing
+identifiers still leave the application. Hashes reveal equality; predictable
+inputs can be guessed. They are not encryption or guaranteed anonymization.
+The backend cannot prove that the submitted hash matches the eventual action.
+
+REST callers use `payload_mode="hash_only"` and a 64-character lowercase hex
+`payload_hash`, omitting both `payload` and `metadata` entirely, including nulls.
+Raw and hash-only checks share history when their hashes, key, session and
+mode match. Required routing fields and ordinary policies still apply.
+
+## Shadow mode
+
+Within an open hosted client:
+
+```python
+result = await guard.check(
+    session_id=run_id, sender="planner", recipient="worker",
+    payload={"tool": "search"}, mode="shadow",
+)
+if result.would_block:
+    print(result.shadow_decision["error"])
+if result.approved:
+    pass  # Application may execute in shadow mode.
+```
+
+Supported repeat/cycle/step and eligible schema detections become warnings.
+Authentication, validation, rate limits, message/agent quotas, spending blocks,
+exhausted budgets and coordination failures can still reject. Approved shadow
+checks consume quota. Shadow and enforcement histories are separate. Switching
+modes does not transfer history. Run spending retains its key/run scope.
+
+Keep `dry_run=False`: legacy dry-run is not shadow mode. Do not let untrusted
+callers change policy modes or reset history when enforcement is mandatory.
+
+## Historical replay and threshold comparison
+
+Offline, supply ordered SHA-256 hashes of observed attempted actions:
+
+```python
+from agenttrafficcop import compare_thresholds
+
+comparison = compare_thresholds(
+    payload_hashes,
+    policies=[{"max_repeats": 3, "max_steps": 25},
+              {"max_repeats": 4, "max_steps": 40}],
+)
+```
+
+Up to 10,000 hashes and four policies are accepted. Supported settings are
+`max_repeats`, `max_steps`, `max_cycle_length` and `max_cycle_repeats`. Offline
+omitted settings follow LocalGuard defaults (50 steps). Each simulation starts
+with empty history and stops at its first block. No actions run or alerts fire.
+
+For retained hosted history, inside an open client:
+
+```python
+comparison = await guard.replay_run(
     session_id=run_id,
-    sender="agent",
-    recipient="model",
-    accountant=accountant,
+    policies=[{"max_repeats": 3, "max_steps": 25},
+              {"max_repeats": 4, "max_steps": 40}],
+    mode="shadow",
 )
 ```
 
-Then protect each participating operation:
+`GuardSync` omits `await`. Hosted omitted settings use 3 repeats, 25 steps,
+cycle length 2 and 3 cycle repetitions. In the dashboard, use **Inspect run →
+Compare detector thresholds**. Its reference is explicit—not the run's verified
+original policy. Nothing changes live detector settings.
+
+Results always set `full_history_verified=false`: timelines are bounded to 200
+recorded checks per run, up to 10,000 per key within plan retention. Missing
+hashes stop replay; discontinuous steps are flagged. Enforcement and shadow are
+selected separately. Resets, expiry, historical policy changes, missing actions
+and complete execution traces are not reconstructed. A different threshold
+cannot invent actions the original workflow never attempted.
+
+Comparison covers repeat/cycle/step rules—not schemas, semantic similarity,
+quotas, spending or every custom hosted policy. Hashes cannot be re-normalized
+without original payloads. Timeline records omit raw payloads and metadata;
+raw-mode checks still transmit payloads for validation and hashing.
+
+## Reported spending and run budgets — Pro/Team
 
 ```python
-response = run.execute(
-    call_provider,
-    operation_id="persisted-operation-123",
-    estimated_cost_usd="0.02",
-    payload={"task": "find refund rules"},
+budget = await guard.set_run_budget(session_id=run_id, budget_usd="2.00")
+# GuardSync: budget = guard.set_run_budget(...)
+```
+
+Setting a budget does not connect provider billing. An authorized backend must
+report incremental costs through timestamp/HMAC-signed `POST /v1/ingest/usage`
+requests. Use matching key/session attribution and stable unique event IDs;
+never report cumulative run totals or duplicate spending across integrations.
+
+Run budgets are **API key + session** scoped. Rolling thresholds cover a key's
+reported costs over 60 seconds. Updating budgets preserves spending; a new run
+needs a new session ID. Delayed reports, unguarded actions and in-flight work can
+overshoot. These are not provider-side hard caps.
+
+## Shared spending reservations — Pro/Team
+
+Reserve estimated cost **before** participating calls start, after setting a run
+budget. Admission atomically checks reported spending plus outstanding holds:
+
+```python
+hold = await guard.reserve_spend(
+    session_id=run_id,
+    reservation_id="operation-123",  # Stable, unique per logical operation.
+    estimated_cost_usd="0.20",
 )
+if hold["duplicate"] or hold["status"] != "held":
+    raise RuntimeError("Recover through your execution ledger; do not execute twice")
+# Execute this operation once, only after all other required checks pass.
 ```
 
-Use `await run.aexecute(...)` for async work. The helper handles:
+Sync clients omit `await`. Estimates are positive, at most $1 billion, with up
+to 6 decimal places. Missing budgets return 409; insufficient available budget
+returns 402. Same ID/estimate returns the existing reservation with
+`duplicate=true`; changed estimates conflict. A duplicate is not permission to
+execute again. Keep an execution ledger/provider idempotency key for recovery.
 
-```text
-check → reserve → execute → report → settle
+A trusted reporter submits one final incremental actual cost per reservation:
+
+```json
+{
+  "api_key": "YOUR_ATC_KEY",
+  "session_id": "run-1",
+  "reservation_id": "operation-123",
+  "event_id": "final-cost-123",
+  "cost": "0.17"
+}
 ```
 
-### Prerequisites
+Send this body to `/v1/ingest/usage` with `X-ATC-Timestamp` and
+`X-ATC-Signature`. The signature is hexadecimal SHA-256 HMAC of
+`timestamp + "." + exact_body`, using the server-side ingestion secret.
+An ordinary API key does not grant access to that signing secret. Arrange an
+authorized integration for the hosted service; never expose it in browser code.
 
-These fragments assume:
+Settlement records actual cost and clears its hold in one transaction. Retry the
+same event with unchanged cost/attribution. Do not also report that operation
+through another integration. Partial/streamed settlements of a single hold are
+not supported; aggregate the final cost at the trusted reporter. CloudPulse
+key-level reports do not settle individual run reservations.
 
-- A configured `GuardRuntime`.
-- A provider callable returning supported final usage.
-- A `UsageAccountant` with exact-model prices.
-- An authorized reporting integration.
-- An existing **Pro/Team run budget** for the same API key and session.
-- Persisted operation IDs and application recovery state.
+There is **no automatic expiry or bearer-token cancellation**: a timed-out worker
+may still be executing. A trusted reporter can settle at zero only after knowing
+that no cost was incurred. Unknown outcomes remain held and require recovery.
+There is a 10,000 unresolved-hold cap per run; active holds are not evicted.
 
-A budget setting or ordinary API key does not automatically connect provider billing or grant ingestion-signing authority.
+The ledger is persistent and shared only by workers using the same database.
+Separate SQLite files do not coordinate even when detector history uses Redis.
+Reservations are key/run scoped, not account-wide or rolling-window allowances.
+Unreserved calls are not prevented. Actual costs above estimates are still
+recorded and can exceed the budget. `check()` does not reserve automatically.
 
-### Accounting and recovery
+Budget reads include `reserved_spend_usd` and `available_to_reserve_usd`.
+`GET /v1/runs/{session_id}/reservations` supports `after` and `limit`
+pagination. To inspect one operation without loading a page, use
+`guard.get_reservation(session_id, reservation_id)` or
+`await guard.get_reservation(session_id, reservation_id)`. This read-only call
+returns the reservation's `status`, estimate, actual cost (if settled), and
+creation time; it returns 404 when the ID is not in that key/run. A `held` result
+is not evidence the provider did or did not execute the request: do not retry the
+provider call or release the hold based on status alone. Reconcile final cost
+through the trusted signed usage-reporting path.
 
-SDK 2.2.0 includes configured-price adapters for supported non-streaming OpenAI and Anthropic text-token usage, plus named LiteLLM, OpenRouter, and LangChain contracts.
+REST: `GET /v1/runs/{session_id}/reservations/{reservation_id}`. The SDK helper
+is included in SDK 2.1.0; use this REST route with
+the existing wheel, or use the pinned source-install instructions above for the
+sync/async helper. No PyPI version change is required for the HTTP endpoint.
 
-- Duplicate reservations do not authorize another execution.
-- Known supported usage can be reported and settled.
-- Timeouts, cancellation, and unknown usage retain unresolved holds.
-- Reporting failure after execution exposes a cost report to retry.
-- **Retry the same report—not the provider action.**
-- Keep ingestion-signing secrets on a trusted backend.
+## Framework integrations
 
-Streaming, audio, tool fees, discounts, and other billing variations may need custom handling. Missing usage or unknown pricing is not silently treated as zero.
+### LangGraph
 
-> Reported-cost controls and estimated reservations are not guaranteed provider-side hard caps. Underestimates, delayed reports, and unreserved calls can exceed a budget.
-
-[Complete budget and accounting setup →](https://agenttrafficcop.com/guide/#budgets)  
-[Failure recovery and reporting-only retries →](https://agenttrafficcop.com/guide/#recovery)
-
-## Framework and MCP integrations
-
-Install the extras you need:
+Install the versioned SDK and the optional LangGraph extra:
 
 ```bash
 python -m pip install 'agenttrafficcop[langgraph]==2.2.0'
-python -m pip install 'agenttrafficcop[crewai]==2.2.0'
-python -m pip install 'agenttrafficcop[autogen-agentchat]==2.2.0'
-python -m pip install 'agenttrafficcop[mcp]==2.2.0'
 ```
 
-| Integration | Entry point | Tested version |
-|---|---|---|
-| LangGraph | `guard_langgraph(...)` or `guarded_node(...)` | `1.2.24` |
-| CrewAI | `guard_crewai_tools(...)` | `1.15.45` |
-| AutoGen AgentChat | `guard_autogen_tools(...)` | AgentChat/core `0.7.5` |
-| MCP client tools | `runtime.mcp_client(...)` | `1.30.0` |
-| Generic callables | `runtime.wrap(...)` / `guard_functions(...)` | Supported sync/async functions |
+```python
+from agenttrafficcop.langgraph import guarded_node
 
-Register the execution paths you want protected and provide application-specific context for run identity and meaningful arguments. Security options are explicit; roles must come from trusted identity. Wrappers do not automatically reserve budgets or account for every internal model call.
+# Existing graph, open hosted guard, and reviewer_fn:
+graph.add_node("reviewer", guarded_node(
+    reviewer_fn, guard=guard, sender="coder", recipient="reviewer",
+    session_id=lambda state: state["run_id"],
+    payload=lambda state: {"draft": state["draft"]},
+    raise_on_trip=True,
+))
+```
 
-The legacy AutoGen adapter supports `pyautogen==0.2.35` via the separate `[autogen]` extra. It is not the same as current AgentChat and does not imply AG2 support.
+Only wrapped nodes are protected. Keep exceptions propagating so failed checks
+stop execution. To pause a circuit-breaker trip for a dashboard review, compile
+with a **durable LangGraph checkpointer** (for example, a production
+database-backed saver) and enable the built-in ATC verifier:
 
-[Framework registration examples →](https://agenttrafficcop.com/guide/#frameworks)
+```python
+builder.add_node("reviewer", guarded_node(
+    reviewer_fn, guard=guard, sender="coder", recipient="reviewer",
+    session_id=lambda state: state["run_id"],
+    payload=lambda state: {"draft": state["draft"]},
+    review_on_trip=True,
+))
+# durable_saver is your database-backed LangGraph checkpointer.
+graph = builder.compile(checkpointer=durable_saver)
+```
 
-## LangGraph human review and durable resume
+When paused, show `__interrupt__[0].value` to the authorized operator and use
+the dashboard's run-review flow to approve/reject the exact action. Resume with
+`Command(resume={"review_id": event["review_id"]})`; the resume payload itself
+is never authorization. The SDK asks ATC to validate the grant against the
+current detector state and exact action, then rechecks policy and consumes the
+one-action approval before the node runs. The
+status API is read-only; only an authenticated dashboard owner can decide a
+review. A custom `review_approval` callback is optional and must fail closed.
 
-SDK 2.2.0 adds a LangGraph adapter that can pause a protected node for dashboard review. On resume, it verifies the exact review and rechecks the action before the node runs. A LangGraph resume command by itself is **not** approval.
-
-For a complete walkthrough, install the SDK integration and SQLite checkpointer:
+For a complete live-service walkthrough, install the SQLite checkpointer extra
+and run the safe no-op example. It pauses after repeated identical requests;
+approve that exact review in the dashboard before pressing Enter. No model
+provider or external tool is called:
 
 ```bash
 python -m pip install 'agenttrafficcop[langgraph]==2.2.0' 'langgraph-checkpoint-sqlite>=3.1.3,<3.2.0'
 export ATC_URL='https://api.agenttrafficcop.com'
 export ATC_API_KEY='your-server-issued-key'
-```
-
-From a clone of the repository, run the example:
-
-```bash
 python examples/langgraph_native_review.py
 ```
 
-It uses a safe placeholder action—no model provider or real external side effect is called. When ATC pauses the workflow, the example prints a run ID and review ID. Approve or reject that exact review in the dashboard. After approval, press Enter to verify it and resume.
+The example persists LangGraph checkpoints to `atc-langgraph-checkpoints.sqlite`.
+Keep that file and reuse the printed run ID plus `--resume-review-id` after a
+process restart. For an offline walkthrough, run
+`python -I examples/langgraph_checkpointed_review.py` from the repository; it
+uses fake ATC/review services and an in-memory saver, so it is not a production
+configuration.
 
-The example stores LangGraph checkpoints in `atc-langgraph-checkpoints.sqlite`. Keep that file, the run ID, and the review ID. To resume after restarting the process, use the same database and run ID:
+A trip creates a checkpoint with only a generic review event, session ID,
+opaque review ID and safe detector error code—never state, prompts, results or
+exception text. On resume the verifier must approve that exact unchanged action;
+only then does the node perform a fresh ATC check immediately before running. A
+resume value by itself is never approval. Do not use an in-memory saver for
+restart durability.
+Approval does not bypass ATC spend/quota/policy controls. Adapters do not
+automatically enable normalization, hash-only, shadow mode or spending
+reservations. Use direct checks for unexposed options.
+
+### Legacy AutoGen
 
 ```bash
-export ATC_RUN_ID='the-printed-run-id'
-export ATC_REVIEW_ID='the-printed-review-id'
-
-python examples/langgraph_native_review.py \
-  --run-id "$ATC_RUN_ID" \
-  --resume-review-id "$ATC_REVIEW_ID"
+python -m pip install 'agenttrafficcop[autogen]==2.2.0'
 ```
 
-The resume input itself never authorizes the action. ATC verifies the dashboard decision for the unchanged action, then performs a fresh check before the node executes. Protect the API key and checkpoint file. Replace the placeholder only after binding the protected action to the exact inputs you intend to review.
+This legacy adapter supports only `pyautogen==0.2.35`, not AgentChat or AG2.
+For current AgentChat 0.7.5 use the separate `guard_autogen_tools` hook documented
+in RUNTIME_FEATURES.md. The legacy adapter does not support other
+similarly named packages. `GuardedConversableAgent` checks supported
+`generate_reply` / `a_generate_reply` pipelines, including registered handlers.
+Direct sends, direct tool calls and work outside those methods are not
+intercepted. One reply can execute multiple tools; costs are not automatically
+reported or reserved. It is not an execution sandbox. Dry-run guards are rejected.
+LocalGuard is not a drop-in replacement for hosted adapters.
 
-[Read the public LangGraph approval/resume guide →](https://agenttrafficcop.com/guide/#langgraph-review) · [View the runnable source example](https://github.com/belalshafeq/AgentTrafficCop/blob/main/examples/langgraph_native_review.py)
+## Failure handling and reliability
 
-## Action identity and privacy
+- Catch `AgentTrafficCopError` around hosted `check()` calls—not just loop errors.
+- Budget, replay and reservation helpers expose HTTPX HTTP/transport exceptions.
+- Local policy failures are results; invalid local input raises `ValueError`.
+- Stop on every failed check, including timeouts and HTTP 503 coordination errors.
+- A failed response does not prove that no history or quota update occurred.
+- Policy-rejected checks do not consume approved-message quota. Ambiguous
+  crash/storage failures can retain conservative charges without client approval.
+- Memory-backed hosted detector history remains single-process and is lost on
+  restart/expiry/reset. Redis coordination needs compatible participating workers.
+  Persistent incident records do not restore active detector history.
+- Webhook notifications are best effort, not a guaranteed-delivery incident queue.
 
-Include stable tool names and meaningful arguments in each payload. Changing timestamps can hide exact repeats. Excluding business arguments can make distinct actions appear identical.
-
-### Explicit exclusions
-
-```python
-guard = LocalGuard(
-    ignore_paths=["/timestamp", "/request/id"],
-)
-```
-
-Hosted checks accept exclusions with hash-only mode:
-
-```python
-decision = runtime.check(
-    session_id=run_id,
-    sender="planner",
-    recipient="worker",
-    payload=action,
-    hash_only=True,
-    ignore_paths=["/timestamp"],
-)
-```
-
-Paths are JSON pointers through objects, not array selectors or wildcards. Normalization uses a copy and does not modify the executed action.
-
-### Data boundaries
-
-- `LocalGuard` sends no network requests.
-- `GuardRuntime` defaults to hash-only hosted checks.
-- Direct `Guard`/`GuardSync` checks default to raw-payload transmission unless configured otherwise.
-- Root `timestamp`, `request_id`, and `trace_id` fields are normalized by `GuardRuntime` by default; nested fields are preserved.
-- Hashes, session IDs, agent names, and routing fields still reach the hosted service.
-- Hashes reveal equality; they are not encryption or guaranteed anonymization.
-
-[Normalization rules and data boundaries →](https://agenttrafficcop.com/guide/#identity)
-
-## Dashboard, shadow mode, and review
-
-Open **Dashboard → Recent Sessions → Inspect run** to inspect recorded decisions.
-
-| Capability | Purpose |
-|---|---|
-| Shadow mode | Observe supported detector warnings without enforcing those warnings |
-| Run timelines | Inspect recorded approvals, blocks, and diagnostics |
-| Threshold comparison | Evaluate deterministic policies over retained history |
-| One-action review | Authorize one eligible retry without clearing detector history |
-| Semantic evidence | Inspect explicitly submitted client-reported observations |
-
-Important boundaries:
-
-- Shadow approvals consume quota; authentication, spending, and coordination failures still reject.
-- Legacy `dry_run=True` is not server-side shadow evaluation.
-- Review does not execute the action or bypass other controls.
-- Threshold comparison does not rerun tools or change live policy.
-- Semantic observations are client-reported, not verified semantic replay.
-- Evidence is bounded to **200 records per run**, **10,000 per key**, and the plan’s retention window.
-- Timelines are not complete execution traces or proof of savings.
-
-[Dashboard behavior and limitations →](https://agenttrafficcop.com/guide/#dashboard)
-
-## Plans and availability
-
-### Hosted allowances
-
-| Allowance | Free | Pro | Team |
-|---|---:|---:|---:|
-| Monthly price | $0 | $49 | $199 |
-| Approved checks / 30-day usage period | 10,000 | 250,000 | 2,000,000 |
-| Tracked agents | 5 | 25 | 100 |
-| Tier rate limit | 60/min | 120/min | 300/min |
-| Active API keys | 2 | 5 | Higher configured capacity |
-| Webhook destinations | 1 | 5 | Higher configured capacity |
-| Default reported-spend threshold / 60s | $0.50 | $5 | $50 |
-| Timeline retention* | 7 days | 30 days | 365 days |
-
-Account-issued keys share an account-anchored 30-day usage period and tracked-agent allowance. Creating another key does not create fresh account quota.
-
-*Retention remains subject to record caps. Configuration and commercial terms may differ; check current pricing.*
-
-### Feature comparison
-
-| Feature | Free | Pro | Team |
-|---|:---:|:---:|:---:|
-| Exact-repeat, cycle, and step checks | ✓ | ✓ | ✓ |
-| Shadow mode | ✓ | ✓ | ✓ |
-| Timelines and threshold comparison | ✓ | ✓ | ✓ |
-| Eligible owner-reviewed one-action continuation | ✓ | ✓ | ✓ |
-| Client-reported semantic evidence | ✓ | ✓ | ✓ |
-| Default reported-spend protection¹ | ✓ | ✓ | ✓ |
-| Custom rolling spend thresholds | — | ✓ | ✓ |
-| Run budgets and reservations | — | ✓ | ✓ |
-| Schema-change detection | — | ✓ | ✓ |
-| Custom hosted step/repeat limits | — | — | ✓ |
-
-¹ Requires authorized cost reporting.
-
-Local checks, semantic policies, normalization helpers, framework hooks, outage policies, and configured-price accounting helpers have **no SDK paid-tier gate**. Hosted allowances, paid hosted controls, and external provider charges still apply. Team adds capacity, retention, and custom hosted step/repeat limits—not unbuilt collaboration or shared-workspace features.
-
-[Plans, storage, and production requirements →](https://agenttrafficcop.com/guide/#production)
-
-## Production and failure boundaries
-
-- Hosted checks fail closed by default.
-- Optional fail-open permits degraded continuation only after eligible connection-establishment failures.
-- Degraded continuation is not hosted approval and cannot enforce hosted quotas, spending, or history.
-- Reserved execution requires actual hosted approval.
-- Local semantic histories are process-local unless Redis sharing is configured.
-- Budgets, reservations, and timelines use a separate persistent ledger.
-- Persistent timelines do not restore active detector history.
-- Installing the SDK does not provision Redis or a database.
-
-Server operators can use `ATC_REQUIRE_SHARED_STATE=true` to refuse startup without reachable Redis. Connectivity checks do not establish durability or backups. Never assume a timeout means no charge, no execution, or no recorded request.
-
-## Documentation
-
-The website guide contains setup instructions, examples, API signatures, recovery requirements, and migration notes.
-
-- [Getting started](https://agenttrafficcop.com/guide/#getting-started)
-- [Local protection](https://agenttrafficcop.com/guide/#local)
-- [Hosted protection and async](https://agenttrafficcop.com/guide/#hosted)
-- [Identity, normalization, and privacy](https://agenttrafficcop.com/guide/#identity)
-- [Semantic detection](https://agenttrafficcop.com/guide/#semantic)
-- [Security, recovery, and shared semantic helpers](https://agenttrafficcop.com/guide/#sdk-20)
-- [Budgets and accounting](https://agenttrafficcop.com/guide/#budgets)
-- [Framework integrations](https://agenttrafficcop.com/guide/#frameworks)
-- [LangGraph approval and durable resume](https://agenttrafficcop.com/guide/#langgraph-review)
-- [Failure recovery](https://agenttrafficcop.com/guide/#recovery)
-- [API reference](https://agenttrafficcop.com/guide/#api)
-- [Version differences](https://agenttrafficcop.com/guide/#versions)
-- [Troubleshooting](https://agenttrafficcop.com/guide/#troubleshooting)
-- [Download the guide as Markdown](https://agenttrafficcop.com/guide.md)
-
-When asking an AI assistant to integrate AgentTrafficCop, provide this guide and specify your installed SDK version.
+Use a trusted execution boundary, stable session identity and a stable payload
+policy. Different wording with different hashes is not detected semantically.
+The SDK is Alpha software, not a compliance certification or a zero-error guarantee.
 
 ## Links
 
-[Website](https://agenttrafficcop.com) · [Dashboard](https://agenttrafficcop.com/dashboard.html) · [PyPI](https://pypi.org/project/agenttrafficcop/) · [SDK repository](https://github.com/belalshafeq/AgentTrafficCop-sdk) · [Issues](https://github.com/belalshafeq/AgentTrafficCop-sdk/issues)
+- [Website and plans](https://agenttrafficcop.com)
+- [Dashboard](https://agenttrafficcop.com/dashboard.html)
+- [PyPI](https://pypi.org/project/agenttrafficcop/)
+- [Public SDK repository and issues](https://github.com/belalshafeq/AgentTrafficCop-sdk)
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+The Python SDK is licensed under the [MIT License](https://github.com/belalshafeq/AgentTrafficCop-sdk/blob/main/LICENSE).
+This does not license the hosted service or private backend.
